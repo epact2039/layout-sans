@@ -9,6 +9,10 @@ export interface AbsoluteResult {
   records: BoxRecord[]
   width: number
   height: number
+  /** Resolved absolute x position of this container — exposed for engine.ts Bug #1 fix */
+  x: number
+  /** Resolved absolute y position of this container */
+  y: number
 }
 
 export function solveAbsolute(
@@ -74,8 +78,11 @@ export function solveAbsolute(
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!
     const childId = `${nodeId}.${i}`
-    records.push(...ctx.solveNode(child, childId, x + padding.left, y + padding.top, innerW, innerH))
+    // Bug #2 fix: never spread into push — crashes V8 at ~65k args
+    const childRecords = ctx.solveNode(child, childId, x + padding.left, y + padding.top, innerW, innerH)
+    for (let j = 0; j < childRecords.length; j++) records.push(childRecords[j]!)
   }
 
-  return { records, width: w, height: h }
+  // Bug #1 fix: expose resolved x/y so engine.ts can use them for the container record
+  return { records, width: w, height: h, x, y }
 }

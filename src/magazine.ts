@@ -73,68 +73,75 @@ export function solveMagazine(
     const { node: textNode, height } = measuredNodes[ni]!
     const childId = `${nodeId}.${ni}`
 
-    // Check if this node overflows current column
-    if (colIndex < cols - 1 && colY - padding.top + height > targetColH) {
-      const remainingInCol = targetColH - (colY - padding.top)
+    // ── Limit #7 fix: spill a tall node across as many columns as needed ────
+    // Old code only created part0 + part1 — a block taller than two columns
+    // would be truncated. The new code loops until all height is placed.
+    let remaining = height
+    let partIndex = 0
 
-      if (remainingInCol < lineHeight) {
-        // Advance to next column immediately
-        maxColH = Math.max(maxColH, colY - padding.top)
-        colIndex++
-        colY = padding.top
-      } else {
-        // Split text node across columns
-        // Portion 1: fills remainder of this column
-        const linesInFirst = Math.floor(remainingInFirst(remainingInCol, lineHeight))
-        const h1 = linesInFirst * lineHeight
+    while (remaining > 0) {
+      const spaceInCol = targetColH - (colY - padding.top)
 
-        records.push({
-          nodeId: `${childId}.part0`,
-          x: colX(colIndex),
-          y: colY,
-          width: colW,
-          height: h1,
-        })
-
-        maxColH = Math.max(maxColH, colY - padding.top + h1)
-        colIndex++
-        colY = padding.top
-
-        // Portion 2: rest goes into next column (simplified: place remainder)
-        const h2 = height - h1
-        if (h2 > 0 && colIndex < cols) {
+      if (remaining <= spaceInCol || colIndex >= cols - 1) {
+        // Fits in the current column (or we're on the last column — place it all)
+        const h = remaining
+        if (partIndex === 0) {
+          // Common case: node fits without splitting — use ctx.solveNode for
+          // correct record type (text node sizing, child records, etc.)
+          // Bug #2 fix: loop instead of spread
+          const childRecords = ctx.solveNode(
+            { ...textNode, width: colW, height: h },
+            childId,
+            colX(colIndex),
+            colY,
+            colW,
+            h,
+          )
+          for (let ci = 0; ci < childRecords.length; ci++) records.push(childRecords[ci]!)
+        } else {
+          // This is a continuation slice — emit a plain sized record
           records.push({
-            nodeId: `${childId}.part1`,
+            nodeId: `${childId}.part${partIndex}`,
             x: colX(colIndex),
             y: colY,
             width: colW,
-            height: h2,
+            height: h,
           })
-          colY += h2
-          maxColH = Math.max(maxColH, colY - padding.top)
         }
-        continue
+        colY += h
+        maxColH = Math.max(maxColH, colY - padding.top)
+        remaining = 0
+      } else {
+        // Block overflows this column — fill it to the top then advance
+        if (spaceInCol < lineHeight) {
+          // Not even a single line fits — just advance the column
+          maxColH = Math.max(maxColH, colY - padding.top)
+          colIndex++
+          colY = padding.top
+        } else {
+          // Fill this column with as many complete lines as fit
+          const linesHere = Math.floor(spaceInCol / lineHeight)
+          const h = linesHere * lineHeight
+
+          records.push({
+            nodeId: `${childId}.part${partIndex}`,
+            x: colX(colIndex),
+            y: colY,
+            width: colW,
+            height: h,
+          })
+
+          maxColH = Math.max(maxColH, colY - padding.top + h)
+          remaining -= h
+          partIndex++
+          colIndex++
+          colY = padding.top
+        }
       }
     }
-
-    // Normal placement: entire node fits in current column
-    records.push(...ctx.solveNode(
-      { ...textNode, width: colW, height: height },
-      childId,
-      colX(colIndex),
-      colY,
-      colW,
-      height,
-    ))
-    colY += height
-    maxColH = Math.max(maxColH, colY - padding.top)
   }
 
   const computedHeight = innerH !== Infinity ? containerHeight : maxColH + padding.top + padding.bottom
 
   return { records, width: containerWidth, height: computedHeight }
-}
-
-function remainingInFirst(available: number, lineHeight: number): number {
-  return Math.floor(available / lineHeight)
 }

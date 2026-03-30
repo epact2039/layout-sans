@@ -294,6 +294,7 @@ The `.compute()` call is pure arithmetic after that — no canvas, no DOM.
 | [`demo/basic-flex.ts`](demo/basic-flex.ts) | 5-line flex row with flex-grow |
 | [`demo/magazine.ts`](demo/magazine.ts) | Multi-column text flow |
 | [`demo/virtualization.ts`](demo/virtualization.ts) | 100,000 variable-height items |
+| [`demo/hero.html`](demo/hero.html) | Interactive canvas demo with 100k boxes |
 
 Run any demo with:
 
@@ -301,6 +302,14 @@ Run any demo with:
 npm run demo
 npm run demo:magazine
 npm run demo:virtualization
+npm run demo:hero  # starts local server at http://localhost:3000
+```
+
+For the HTML demo, make sure to build first:
+
+```sh
+npm run build
+npm run demo:hero
 ```
 
 ---

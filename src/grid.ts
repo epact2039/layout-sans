@@ -58,7 +58,9 @@ export function solveGrid(
       const x = padding.left + col * (cellW + colGap)
       const y = padding.top + row * (cellH + rowGap)
       const childId = `${nodeId}.${i}`
-      records.push(...ctx.solveNode(child, childId, x, y, cellW, cellH))
+      // Bug #2 fix: loop instead of spread
+      const childRecords = ctx.solveNode(child, childId, x, y, cellW, cellH)
+      for (let ci = 0; ci < childRecords.length; ci++) records.push(childRecords[ci]!)
     }
 
     const totalH = rows * cellH + (rows - 1) * rowGap + padding.top + padding.bottom
@@ -79,7 +81,9 @@ export function solveGrid(
       const x = padding.left + col * (cellW + colGap)
       const y = padding.top + row * (cellH + rowGap)
       const childId = `${nodeId}.${i}`
-      records.push(...ctx.solveNode(child, childId, x, y, cellW, cellH))
+      // Bug #2 fix: loop instead of spread
+      const childRecords = ctx.solveNode(child, childId, x, y, cellW, cellH)
+      for (let ci = 0; ci < childRecords.length; ci++) records.push(childRecords[ci]!)
     }
 
     return { records, width: containerWidth, height: containerHeight }
@@ -91,10 +95,60 @@ export function solveGrid(
     const child = children[i]!
     const childId = `${nodeId}.${i}`
     const measured = ctx.measureNode(child, childId, innerW, Infinity)
-    records.push(...ctx.solveNode(child, childId, padding.left, y, innerW, measured.height))
+    // Bug #2 fix: loop instead of spread
+    const childRecords = ctx.solveNode(child, childId, padding.left, y, innerW, measured.height)
+    for (let ci = 0; ci < childRecords.length; ci++) records.push(childRecords[ci]!)
     y += measured.height + rowGap
   }
 
   const totalH = y - rowGap + padding.bottom
   return { records, width: containerWidth, height: totalH }
+}
+
+// ── Lightweight size measurement — no record allocation (Perf #3) ─────────────
+// Called by engine.ts measureNode when a grid container is a cross-axis child.
+// Avoids a full solve + record allocation just to read the container size.
+export function measureGridSize(
+  node: GridNode,
+  containerWidth: number,
+  containerHeight: number,
+  ctx: SolverContext,
+): { width: number; height: number } {
+  const padding = getPaddingBox(node)
+  const innerW = containerWidth - padding.left - padding.right
+  const innerH = containerHeight - padding.top - padding.bottom
+  const children = node.children ?? []
+  const colGap = node.columnGap ?? node.gap ?? 0
+  const rowGap = node.rowGap ?? node.gap ?? 0
+
+  if (node.columns !== undefined) {
+    const cols = node.columns
+    const cellW = (innerW - colGap * (cols - 1)) / cols
+    const rows = Math.ceil(children.length / cols)
+    let cellH: number
+    if (node.height !== undefined) {
+      cellH = (innerH - rowGap * (rows - 1)) / rows
+    } else {
+      cellH = 0
+      for (let i = 0; i < children.length; i++) {
+        const m = ctx.measureNode(children[i]!, `measure.${i}`, cellW, Infinity)
+        if (m.height > cellH) cellH = m.height
+      }
+    }
+    const totalH = rows * cellH + (rows - 1) * rowGap + padding.top + padding.bottom
+    return { width: containerWidth, height: node.height ?? totalH }
+  }
+
+  if (node.rows !== undefined) {
+    // Row-based grid: container dimensions are fixed by the caller
+    return { width: containerWidth, height: containerHeight }
+  }
+
+  // Fallback: single column — sum child heights
+  let totalH = padding.top
+  for (let i = 0; i < children.length; i++) {
+    const m = ctx.measureNode(children[i]!, `measure.${i}`, innerW, Infinity)
+    totalH += m.height + rowGap
+  }
+  return { width: containerWidth, height: totalH - rowGap + padding.bottom }
 }

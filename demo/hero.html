@@ -370,9 +370,10 @@
 <!-- ─────────────────────────────────────────────────────────────────────────── -->
 <script type="module">
 // LayoutSans Hero Demo — demo/hero.html
-// Place this file in the /demo directory. Serve with: npx serve ..
-// It imports from ../dist/index.js (run `npm run build` first).
-// Falls back to an inline fast-path engine if dist is unavailable.
+// Imports from the built package at ../dist/index.js
+// Run `npm run build` before serving this demo.
+
+import { createLayout } from '../dist/index.js'
 
 // ── Seeded PRNG (LCG) ────────────────────────────────────────────────────────
 const prng = seed => {
@@ -380,37 +381,7 @@ const prng = seed => {
   return () => { s = Math.imul(1664525, s) + 1013904223 >>> 0; return s / 0x100000000 }
 }
 
-// ── Inline fallback engine (column fast-path only) ───────────────────────────
-function inlineCreateLayout(root) {
-  return {
-    compute() {
-      const gap = root.gap ?? 0
-      const records = [{ nodeId: '0', x: 0, y: 0, width: root.width, height: 0 }]
-      let y = 0
-      for (let i = 0; i < root.children.length; i++) {
-        const c = root.children[i]
-        records.push({ nodeId: `0.${i}`, x: 0, y, width: c.width, height: c.height })
-        y += c.height + gap
-      }
-      records[0].height = y > 0 ? y - gap : 0
-      return records
-    }
-  }
-}
-
-// ── Load LayoutSans engine (real dist or fallback) ───────────────────────────
-let createLayout = inlineCreateLayout
-let engineLabel = 'inline fallback'
-
-try {
-  const mod = await import('../dist/index.js')
-  createLayout = mod.createLayout
-  engineLabel = 'layout-sans dist ✓'
-} catch {
-  console.warn('[LayoutSans hero] Could not load ../dist/index.js — using inline fallback. Run `npm run build` first.')
-}
-
-document.getElementById('sb-engine').textContent = engineLabel
+document.getElementById('sb-engine').textContent = 'layout-sans dist ✓'
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const S = {

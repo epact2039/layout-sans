@@ -1,6 +1,6 @@
 {
   "name": "layout-sans",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CSS Flex/Grid layout without the browser. No DOM. No WASM bloat.",
   "author": "Basel Ashraf",
   "license": "MIT",
@@ -45,6 +45,7 @@
     "demo": "tsx demo/basic-flex.ts",
     "demo:magazine": "tsx demo/magazine.ts",
     "demo:virtualization": "tsx demo/virtualization.ts",
+    "demo:hero": "npx http-server -p 3000 -o /demo/hero.html",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {

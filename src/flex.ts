@@ -159,15 +159,19 @@ export function solveFlex(
         }
       }
     } else if (totalGrow === 0 && freeSpace < 0) {
-      // Shrink pass
+      // Shrink pass — Algo #6 fix: use flexBasis (not mainSize) per CSS spec
       let totalShrinkWeight = 0
       for (const item of line.items) {
-        if (!isNaN(item.mainSize)) totalShrinkWeight += item.flexShrink * item.mainSize
+        if (!isNaN(item.mainSize)) {
+          const basis = isNaN(item.flexBasis) ? item.mainSize : item.flexBasis
+          totalShrinkWeight += item.flexShrink * basis
+        }
       }
       if (totalShrinkWeight > 0) {
         for (const item of line.items) {
           if (item.flexShrink > 0 && !isNaN(item.mainSize)) {
-            const shrink = (item.flexShrink * item.mainSize / totalShrinkWeight) * Math.abs(freeSpace)
+            const basis = isNaN(item.flexBasis) ? item.mainSize : item.flexBasis
+            const shrink = (item.flexShrink * basis / totalShrinkWeight) * Math.abs(freeSpace)
             item.mainSize = Math.max(0, item.mainSize - shrink)
           }
         }
@@ -249,9 +253,9 @@ export function solveFlex(
       const w = isRow ? item.mainSize : item.crossSize
       const h = isRow ? item.crossSize : item.mainSize
 
-      // Recurse into the child solver
+      // Recurse into the child solver — use loop not spread (Bug #2: spread crashes at ~65k args)
       const childRecords = ctx.solveNode(item.child, item.id, x, y, w, h)
-      records.push(...childRecords)
+      for (let ci = 0; ci < childRecords.length; ci++) records.push(childRecords[ci]!)
 
       mainOffset += (isNaN(item.mainSize) ? 0 : item.mainSize) + mainGap + spacing + (item.marginMain - marginMainStart)
     }
@@ -284,9 +288,7 @@ export function solveFlexColumn(
   const children = node.children ?? []
   const gap = node.gap ?? node.rowGap ?? 0
   const padding = getPaddingBox(node)
-  const innerW = containerWidth - padding.left - padding.right
 
-  // Validate all children are fixed-size boxes with no flex growth
   for (const child of children) {
     if (child.type !== 'box') return null
     if ((child.flex ?? 0) > 0) return null
@@ -294,24 +296,142 @@ export function solveFlexColumn(
     if (child.width === undefined || child.height === undefined) return null
   }
 
-  // Fast O(n) emit
   const records: BoxRecord[] = new Array(children.length)
   let y = padding.top
 
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!
-    const childId = `${nodeId}.${i}`
-    const id = child.id ?? childId
-    const w = child.width!
-    const h = child.height!
-    records[i] = { nodeId: id, x: padding.left, y, width: w, height: h }
-    y += h + gap
+    const id = child.id ?? `${nodeId}.${i}`
+    records[i] = { nodeId: id, x: padding.left, y, width: child.width!, height: child.height! }
+    y += child.height! + gap
   }
 
-  // Remove the last gap, add bottom padding — y is now total content height
   const totalHeight = children.length > 0
     ? y - gap + padding.bottom
     : padding.top + padding.bottom
 
   return { records, totalHeight }
+}
+
+// ── Fast path: fixed-size row of box nodes (Perf #4 — symmetric to column) ────
+// Handles nav bars, toolbars, card rows — the most common horizontal pattern.
+export function solveFlexRow(
+  node: FlexNode,
+  nodeId: string,
+  containerHeight: number,
+  ctx: SolverContext,
+): { records: BoxRecord[]; totalWidth: number } | null {
+  if ((node.direction ?? 'row') !== 'row') return null
+  if (node.wrap) return null
+  if (node.justifyContent && node.justifyContent !== 'flex-start') return null
+
+  const children = node.children ?? []
+  const gap = node.gap ?? node.columnGap ?? 0
+  const padding = getPaddingBox(node)
+
+  for (const child of children) {
+    if (child.type !== 'box') return null
+    if ((child.flex ?? 0) > 0) return null
+    if (child.margin !== undefined || child.marginLeft !== undefined || child.marginRight !== undefined) return null
+    if (child.width === undefined || child.height === undefined) return null
+  }
+
+  const records: BoxRecord[] = new Array(children.length)
+  let x = padding.left
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!
+    const id = child.id ?? `${nodeId}.${i}`
+    records[i] = { nodeId: id, x, y: padding.top, width: child.width!, height: child.height! }
+    x += child.width! + gap
+  }
+
+  const totalWidth = children.length > 0
+    ? x - gap + padding.right
+    : padding.left + padding.right
+
+  return { records, totalWidth }
+}
+
+// ── Lightweight size measurement — no record allocation (Perf #3) ─────────────
+// Called by engine.ts measureNode when a flex container is a cross-axis child.
+// Runs passes 1 + 2 only (measure + distribute), skips the positioning pass,
+// avoiding O(n²) re-layout when containers are nested inside aligned flex rows.
+export function measureFlexSize(
+  node: FlexNode,
+  containerWidth: number,
+  containerHeight: number,
+  ctx: SolverContext,
+): { width: number; height: number } {
+  const direction = node.direction ?? 'row'
+  const isRow = direction === 'row'
+  const padding = getPaddingBox(node)
+  const innerWidth = containerWidth - padding.left - padding.right
+  const innerHeight = containerHeight - padding.top - padding.bottom
+  const mainGap = isRow ? (node.columnGap ?? node.gap ?? 0) : (node.rowGap ?? node.gap ?? 0)
+  const crossGap = isRow ? (node.rowGap ?? node.gap ?? 0) : (node.columnGap ?? node.gap ?? 0)
+  const children = node.children ?? []
+  const mainContainerSize = isRow ? innerWidth : innerHeight
+
+  let totalMainSize = 0   // accumulated main-axis content size across all lines
+  let totalCrossSize = 0  // accumulated cross-axis size across all lines
+  let lineCount = 0
+  let lineFlex = 0
+  let lineMain = 0
+  let lineCross = 0
+  let lineItemCount = 0
+
+  function closeLine(): void {
+    const gapTotal = (lineItemCount - 1) * mainGap
+    const freeSpace = mainContainerSize - lineMain - gapTotal
+    // flex-grow items consume the remaining free space on the main axis
+    if (lineFlex > 0 && freeSpace > 0) lineMain = mainContainerSize - gapTotal
+    totalMainSize += lineMain + gapTotal
+    totalCrossSize += lineCross
+    lineCount++
+    lineFlex = 0; lineMain = 0; lineCross = 0; lineItemCount = 0
+  }
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!
+    const measureId = `measure.${i}`
+    const flex = child.flex ?? 0
+    const mainFixed = isRow ? (child.width ?? NaN) : (child.height ?? NaN)
+    const crossFixed = isRow ? (child.height ?? NaN) : (child.width ?? NaN)
+    const mainSize = flex > 0 ? NaN : (!isNaN(mainFixed) ? mainFixed : 0)
+    const crossSize = isNaN(crossFixed)
+      ? ctx.measureNode(
+          child,
+          measureId,
+          isRow ? (isNaN(mainSize) ? innerWidth : mainSize) : innerWidth,
+          isRow ? innerHeight : (isNaN(mainSize) ? innerHeight : mainSize),
+        )[isRow ? 'height' : 'width']
+      : crossFixed
+
+    if (node.wrap && lineItemCount > 0 && lineMain + (isNaN(mainSize) ? 0 : mainSize) > mainContainerSize) {
+      closeLine()
+    }
+
+    lineMain += isNaN(mainSize) ? 0 : mainSize
+    lineCross = Math.max(lineCross, crossSize)
+    lineFlex += flex
+    lineItemCount++
+  }
+
+  if (lineItemCount > 0) closeLine()
+
+  // cross axis: sum of all line cross-sizes + cross gaps + cross padding
+  const crossPad = isRow ? padding.top + padding.bottom : padding.left + padding.right
+  const crossTotal = totalCrossSize + (lineCount - 1) * crossGap + crossPad
+
+  // main axis: for content-sized containers use computed total; for fixed use node.width/height
+  const mainPad = isRow ? padding.left + padding.right : padding.top + padding.bottom
+  const computedMain = totalMainSize + mainPad
+
+  return {
+    // row  → width is fixed at containerWidth; height grows from children (cross)
+    // col  → width grows from children (cross); height is computed from main axis
+    width:  isRow ? (node.width ?? containerWidth) : crossTotal,
+    height: isRow ? crossTotal : (node.height ?? computedMain),
+  }
 }
