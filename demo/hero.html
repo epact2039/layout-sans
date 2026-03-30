@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LayoutSans — 100,000 boxes · zero DOM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #07070f;
+      --surface:  #0e0e1b;
+      --surface2: #13132a;
+      --border:   rgba(255,255,255,0.07);
+      --mint:     #00e8b5;
+      --indigo:   #6c7aff;
+      --coral:    #ff5757;
+      --text:     #ccd0e8;
+      --muted:    #484860;
+      --mono:     'JetBrains Mono', 'Fira Code', monospace;
+      --display:  'Syne', sans-serif;
+      --hdr:      48px;
+      --ftr:      36px;
+      --sw:       224px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 12px; }
+
+    /* ── HEADER ────────────────────────────────────────────────────────────── */
+    .hdr {
+      position: fixed; top: 0; left: 0; right: 0; height: var(--hdr);
+      background: rgba(7,7,15,0.88); backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 18px; z-index: 100; gap: 14px;
+    }
+    .hdr-left { display: flex; align-items: baseline; gap: 9px; flex-shrink: 0; }
+    .logo {
+  font-family: "Geist Sans", system-ui, sans-serif;
+  font-weight: 900;           /* Black instead of 800 — much sharper */
+  font-size: 26px;            /* bigger than 18px — looks more like a real product logo */
+  color: #ffffff;
+  letter-spacing: -1.1px;     /* tighter and more modern than -0.6px */
+  line-height: 1;
+  text-transform: none;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.25); /* very subtle cyan glow */
+}
+    .logo b { color: var(--mint); font-weight: 800; }
+    .logo-sub { font-size: 9px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+    .hdr-mid {
+      flex: 1; text-align: center; font-size: 11px; color: var(--muted);
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+      animation: fadeUp 0.6s ease 0.4s both;
+    }
+    .hdr-mid strong { color: var(--mint); font-weight: 500; }
+    .hdr-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .hdr-link {
+      color: var(--muted); text-decoration: none; font-size: 10px;
+      display: flex; align-items: center; gap: 5px; transition: color 0.15s;
+    }
+    .hdr-link:hover { color: var(--text); }
+    .badge {
+      background: rgba(0,232,181,0.1); color: var(--mint);
+      border: 1px solid rgba(0,232,181,0.28); border-radius: 4px;
+      padding: 1px 7px; font-size: 10px;
+    }
+    .rec-btn {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 11px; border-radius: 4px; font-family: var(--mono); font-size: 10px;
+      cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 5px;
+    }
+    .rec-btn::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); opacity: 0.5; }
+    .rec-btn:hover { border-color: var(--coral); color: var(--coral); }
+    .rec-btn:hover::before, .rec-btn.on::before { opacity: 1; }
+    .rec-btn.on { background: rgba(255,87,87,0.12); border-color: var(--coral); color: var(--coral); }
+
+    /* ── MAIN ──────────────────────────────────────────────────────────────── */
+    .main {
+      position: fixed; top: var(--hdr); left: 0; right: 0; bottom: var(--ftr);
+      display: flex; overflow: hidden;
+    }
+
+    /* ── SIDEBAR ───────────────────────────────────────────────────────────── */
+    .sidebar {
+      width: var(--sw); flex-shrink: 0; background: var(--surface);
+      border-right: 1px solid var(--border); overflow-y: auto; overflow-x: hidden;
+      transition: width 0.24s ease, opacity 0.2s ease;
+    }
+    .sidebar.closed { width: 0; opacity: 0; pointer-events: none; }
+    .sb-tab {
+      width: 14px; flex-shrink: 0; background: var(--surface); border: none;
+      border-right: 1px solid var(--border); cursor: pointer; color: var(--muted);
+      font-size: 9px; transition: color 0.15s; display: flex; align-items: center; justify-content: center;
+    }
+    .sb-tab:hover { color: var(--mint); }
+    .sb-section { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    .sb-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+    .sb-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+    .sb-key { font-size: 11px; color: var(--text); }
+    .sb-val { font-size: 11px; color: var(--mint); min-width: 55px; text-align: right; }
+    input[type=range] {
+      width: 100%; accent-color: var(--mint); height: 3px; cursor: pointer; margin-top: 5px;
+      background: transparent;
+    }
+    .tog { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 5px 0; }
+    .tog-lbl { font-size: 11px; color: var(--text); }
+    .tog-track {
+      width: 28px; height: 14px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 7px; position: relative; transition: background 0.2s, border-color 0.2s; flex-shrink: 0;
+    }
+    .tog-track.on { background: rgba(0,232,181,0.22); border-color: rgba(0,232,181,0.4); }
+    .tog-thumb {
+      width: 10px; height: 10px; border-radius: 50%; background: var(--muted);
+      position: absolute; top: 1px; left: 1px; transition: transform 0.2s, background 0.2s;
+    }
+    .tog-track.on .tog-thumb { background: var(--mint); transform: translateX(14px); }
+    .btn {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 10px; border-radius: 4px; font-family: var(--mono); font-size: 11px;
+      cursor: pointer; transition: all 0.15s; text-align: center; margin-top: 5px;
+    }
+    .btn:hover { border-color: var(--indigo); color: var(--indigo); }
+    .btn.prim { border-color: rgba(0,232,181,0.3); color: var(--mint); }
+    .btn.prim:hover { background: rgba(0,232,181,0.08); }
+    .leg-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 10px; color: var(--text); }
+    .leg-dot { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── CANVAS WRAP ───────────────────────────────────────────────────────── */
+    .cwrap { flex: 1; position: relative; overflow: hidden; background: var(--bg); cursor: ns-resize; }
+    #demo { display: block; width: 100%; height: 100%; }
+
+    /* ── PERF OVERLAY ──────────────────────────────────────────────────────── */
+    .perf {
+      position: absolute; top: 12px; right: 14px; background: rgba(7,7,15,0.82);
+      border: 1px solid rgba(0,232,181,0.18); border-radius: 6px;
+      padding: 10px 14px; min-width: 168px; backdrop-filter: blur(10px); pointer-events: none;
+    }
+    .fps-row { display: flex; align-items: baseline; gap: 4px; }
+    #fps-num {
+      font-family: var(--display); font-size: 38px; font-weight: 800;
+      color: var(--mint); line-height: 1; letter-spacing: -2px; min-width: 70px;
+    }
+    .fps-unit { font-size: 11px; color: var(--muted); }
+    .perf-rows { margin-top: 9px; display: flex; flex-direction: column; gap: 3px; }
+    .perf-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+    .pk { font-size: 10px; color: var(--muted); }
+    .pv { font-size: 10px; color: var(--text); }
+    .pv.hi { color: var(--mint); }
+
+    /* ── FOOTER ────────────────────────────────────────────────────────────── */
+    .ftr {
+      position: fixed; bottom: 0; left: 0; right: 0; height: var(--ftr);
+      background: rgba(7,7,15,0.88); backdrop-filter: blur(14px);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 18px; z-index: 100;
+    }
+    .ftr-l { font-size: 10px; color: var(--muted); }
+    .ftr-l a { color: var(--mint); text-decoration: none; }
+    .ftr-l a:hover { text-decoration: underline; }
+    .npm-pill {
+      display: flex; align-items: center; gap: 7px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 4px; padding: 3px 11px;
+      font-size: 11px; color: var(--mint); cursor: pointer; transition: border-color 0.15s;
+    }
+    .npm-pill:hover { border-color: rgba(0,232,181,0.4); }
+    .npm-dollar { color: var(--muted); }
+    .copy-tip { font-size: 9px; color: var(--muted); transition: color 0.3s; }
+    .copy-tip.ok { color: var(--mint); }
+    .ftr-r { font-size: 10px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+    .ftr-r kbd {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 3px;
+      padding: 1px 5px; font-family: var(--mono); font-size: 9px;
+    }
+
+    /* ── KEY HELP ──────────────────────────────────────────────────────────── */
+    .khelp {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(14,14,27,0.96); border: 1px solid var(--border); border-radius: 8px;
+      padding: 20px 26px; min-width: 290px; z-index: 999;
+      backdrop-filter: blur(20px); display: none;
+    }
+    .khelp.vis { display: block; }
+    .khelp h3 { font-family: var(--display); font-size: 14px; color: #fff; margin-bottom: 14px; }
+    .kr { display: flex; align-items: center; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
+    .kr:last-child { border: none; }
+    .kr kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 2px 6px; min-width: 30px; text-align: center; font-family: var(--mono); font-size: 9px; flex-shrink: 0; }
+
+    /* ── RECORD MODE ───────────────────────────────────────────────────────── */
+    body.rec .hdr, body.rec .sidebar, body.rec .sb-tab, body.rec .ftr, body.rec .perf { display: none !important; }
+    body.rec .main { top: 0; bottom: 0; }
+
+    /* ── INIT OVERLAY ──────────────────────────────────────────────────────── */
+    .init-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      background: var(--bg); z-index: 50; transition: opacity 0.4s;
+    }
+    .init-overlay.gone { opacity: 0; pointer-events: none; }
+    .init-spinner {
+      width: 28px; height: 28px; border: 2px solid var(--border);
+      border-top-color: var(--mint); border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    .init-txt { font-size: 11px; color: var(--muted); }
+
+    /* ── SCROLLBAR ─────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────────────────────── -->
+<header class="hdr">
+  <div class="hdr-left">
+    <span class="logo">Layout<b>Sans</b></span>
+    <span class="logo-sub">Pretext × layout</span>
+  </div>
+  <div class="hdr-mid">
+    <strong id="hdr-count">100,000</strong> variable-height boxes &nbsp;·&nbsp;
+    <strong id="hdr-fps">—</strong> fps &nbsp;·&nbsp;
+    <strong>zero DOM reads</strong>
+  </div>
+  <div class="hdr-right">
+    <a class="hdr-link" href="https://github.com/BaselAshraf81/layout-sans" target="_blank" rel="noopener">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+      BaselAshraf81/layout-sans
+    </a>
+    <span class="badge">v0.1.0</span>
+    <a class="hdr-link" href="https://github.com/chenglou/pretext" target="_blank" rel="noopener">
+      Peer: @chenglou/pretext
+    </a>
+    <button class="rec-btn" id="rec-btn">Record</button>
+  </div>
+</header>
+
+<!-- ── MAIN ────────────────────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-section">
+      <div class="sb-lbl">Items</div>
+      <div class="sb-row">
+        <span class="sb-key">Count</span>
+        <span class="sb-val" id="sb-count">100,000</span>
+      </div>
+      <input type="range" id="sl-count" min="10000" max="200000" step="5000" value="100000" />
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-lbl">Data</div>
+      <label class="tog" id="tog-rand">
+        <span class="tog-lbl">Random heights</span>
+        <div class="tog-track on" id="tt-rand"><div class="tog-thumb"></div></div>
+      </label>
+      <label class="tog" id="tog-text">
+        <span class="tog-lbl">Text node markers</span>
+        <div class="tog-track on" id="tt-text"><div class="tog-thumb"></div></div>
+      </label>
+      <button class="btn" id="btn-regen">↻ Regenerate seed</button>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-lbl">Scroll</div>
+      <label class="tog" id="tog-auto">
+        <span class="tog-lbl">Auto-scroll</span>
+        <div class="tog-track on" id="tt-auto"><div class="tog-thumb"></div></div>
+      </label>
+      <div class="sb-row" style="margin-top:8px">
+        <span class="sb-key">Speed</span>
+        <span class="sb-val" id="sb-speed">1.0×</span>
+      </div>
+      <input type="range" id="sl-speed" min="1" max="50" step="1" value="10" />
+      <button class="btn prim" id="btn-reset" style="margin-top:8px">↑ Reset scroll</button>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-lbl">Stats</div>
+      <div class="sb-row"><span class="sb-key" style="color:var(--muted)">Compute</span><span class="sb-val" id="sb-compute">—</span></div>
+      <div class="sb-row"><span class="sb-key" style="color:var(--muted)">Visible</span><span class="sb-val" id="sb-vis">—</span></div>
+      <div class="sb-row"><span class="sb-key" style="color:var(--muted)">Total height</span><span class="sb-val" id="sb-total">—</span></div>
+      <div class="sb-row"><span class="sb-key" style="color:var(--muted)">Engine</span><span class="sb-val" id="sb-engine" style="font-size:9px">—</span></div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-lbl">Legend</div>
+      <div class="leg-item">
+        <div class="leg-dot" style="background:rgba(0,232,181,0.25);border:1px solid rgba(0,232,181,0.55)"></div>
+        Text node (every 10th)
+      </div>
+      <div class="leg-item">
+        <div class="leg-dot" style="background:rgba(108,122,255,0.2);border:1px solid rgba(108,122,255,0.45)"></div>
+        Box node
+      </div>
+      <div class="leg-item">
+        <div class="leg-dot" style="background:rgba(108,122,255,0.35);border:1px solid rgba(108,122,255,0.7)"></div>
+        Featured box (every 50th)
+      </div>
+    </div>
+  </aside>
+
+  <!-- Sidebar tab -->
+  <button class="sb-tab" id="sb-tab" title="Toggle sidebar">‹</button>
+
+  <!-- CANVAS AREA -->
+  <div class="cwrap" id="cwrap">
+    <canvas id="demo"></canvas>
+
+    <!-- Init overlay -->
+    <div class="init-overlay" id="init-ov">
+      <div class="init-spinner"></div>
+      <span class="init-txt" id="init-msg">Computing layout…</span>
+    </div>
+
+    <!-- Perf overlay -->
+    <div class="perf" id="perf-ov">
+      <div class="fps-row">
+        <span id="fps-num">—</span>
+        <span class="fps-unit">fps</span>
+      </div>
+      <div class="perf-rows">
+        <div class="perf-row"><span class="pk">Items</span><span class="pv hi" id="pv-items">100,000</span></div>
+        <div class="perf-row"><span class="pk">Compute</span><span class="pv" id="pv-compute">—</span></div>
+        <div class="perf-row"><span class="pk">Render</span><span class="pv" id="pv-render">—</span></div>
+        <div class="perf-row"><span class="pk">Visible</span><span class="pv" id="pv-vis">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
+<footer class="ftr">
+  <span class="ftr-l">
+    The pure TypeScript sequel to <a href="https://github.com/chenglou/pretext" target="_blank" rel="noopener">Pretext</a> by @_chenglou
+  </span>
+  <div class="npm-pill" id="npm-copy">
+    <span class="npm-dollar">$</span>
+    npm install layout-sans
+    <span class="copy-tip" id="copy-tip">click to copy</span>
+  </div>
+  <div class="ftr-r">
+    <kbd>?</kbd> help
+    <kbd>Space</kbd> pause
+    <kbd>R</kbd> regen
+    <kbd>F</kbd> fps
+  </div>
+</footer>
+
+<!-- ── KEY HELP ────────────────────────────────────────────────────────────── -->
+<div class="khelp" id="khelp">
+  <h3>Keyboard shortcuts</h3>
+  <div class="kr"><kbd>Space</kbd><span>Pause / resume auto-scroll</span></div>
+  <div class="kr"><kbd>R</kbd><span>Regenerate with new seed</span></div>
+  <div class="kr"><kbd>↑ ↓</kbd><span>Scroll by 60px</span></div>
+  <div class="kr"><kbd>Home</kbd><span>Jump to top</span></div>
+  <div class="kr"><kbd>F</kbd><span>Toggle FPS overlay</span></div>
+  <div class="kr"><kbd>S</kbd><span>Toggle sidebar</span></div>
+  <div class="kr"><kbd>?</kbd><span>Toggle this help</span></div>
+  <div class="kr"><kbd>Esc</kbd><span>Close / exit record mode</span></div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<script type="module">
+// LayoutSans Hero Demo — demo/hero.html
+// Place this file in the /demo directory. Serve with: npx serve ..
+// It imports from ../dist/index.js (run `npm run build` first).
+// Falls back to an inline fast-path engine if dist is unavailable.
+
+// ── Seeded PRNG (LCG) ────────────────────────────────────────────────────────
+const prng = seed => {
+  let s = seed >>> 0
+  return () => { s = Math.imul(1664525, s) + 1013904223 >>> 0; return s / 0x100000000 }
+}
+
+// ── Inline fallback engine (column fast-path only) ───────────────────────────
+function inlineCreateLayout(root) {
+  return {
+    compute() {
+      const gap = root.gap ?? 0
+      const records = [{ nodeId: '0', x: 0, y: 0, width: root.width, height: 0 }]
+      let y = 0
+      for (let i = 0; i < root.children.length; i++) {
+        const c = root.children[i]
+        records.push({ nodeId: `0.${i}`, x: 0, y, width: c.width, height: c.height })
+        y += c.height + gap
+      }
+      records[0].height = y > 0 ? y - gap : 0
+      return records
+    }
+  }
+}
+
+// ── Load LayoutSans engine (real dist or fallback) ───────────────────────────
+let createLayout = inlineCreateLayout
+let engineLabel = 'inline fallback'
+
+try {
+  const mod = await import('../dist/index.js')
+  createLayout = mod.createLayout
+  engineLabel = 'layout-sans dist ✓'
+} catch {
+  console.warn('[LayoutSans hero] Could not load ../dist/index.js — using inline fallback. Run `npm run build` first.')
+}
+
+document.getElementById('sb-engine').textContent = engineLabel
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const S = {
+  count: 100_000,
+  randomH: true,
+  showText: true,
+  autoScroll: true,
+  speed: 1.0,
+  scrollY: 0,
+  paused: false,
+  seed: 42,
+  recordMode: false,
+  showOverlay: true,
+  sidebarOpen: true,
+}
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('demo')
+const ctx = canvas.getContext('2d')
+const dpr = Math.min(window.devicePixelRatio || 1, 2)
+let CW = 0, CH = 0   // logical px
+
+function resizeCanvas() {
+  const wrap = document.getElementById('cwrap')
+  CW = wrap.clientWidth
+  CH = wrap.clientHeight
+  canvas.width = CW * dpr
+  canvas.height = CH * dpr
+  canvas.style.width = CW + 'px'
+  canvas.style.height = CH + 'px'
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+}
+
+// ── Layout computation ────────────────────────────────────────────────────────
+let childBoxes = []   // boxes[0] is root; children start at index 1
+let totalH = 0
+let computeMs = 0
+
+function buildLayout() {
+  const rng = prng(S.seed)
+  const PAD = 14
+  const W = CW - PAD * 2 - 12   // 12px for scrollbar gutter
+  const GAP = 4
+
+  const t0 = performance.now()
+
+  // Build child nodes
+  const children = new Array(S.count)
+  for (let i = 0; i < S.count; i++) {
+    let h
+    if (!S.randomH) {
+      h = 44
+    } else if (i % 10 === 0) {
+      h = 36 + (rng() * 84 | 0)    // text nodes: 36–120
+    } else {
+      h = 22 + (rng() * 50 | 0)    // box nodes: 22–72
+    }
+    children[i] = { type: 'box', width: W, height: h }
+  }
+
+  const root = {
+    type: 'flex',
+    direction: 'column',
+    width: W,
+    gap: GAP,
+    children,
+  }
+
+  const boxes = createLayout(root).compute()
+  computeMs = performance.now() - t0
+
+  // Separate root record (index 0) from children
+  childBoxes = boxes.slice(1).map((b, i) => ({
+    ...b,
+    x: b.x + PAD,
+    isText: i % 10 === 0,
+    featured: i % 50 === 0,
+  }))
+  totalH = boxes[0]?.height ?? 0
+
+  // Update sidebar stats
+  document.getElementById('sb-compute').textContent = computeMs.toFixed(2) + ' ms'
+  document.getElementById('sb-total').textContent = Math.round(totalH / 1000) + ' kpx'
+
+  return computeMs
+}
+
+// Binary search: first child whose bottom ≥ scrollY
+function findFirst(sy) {
+  if (childBoxes.length === 0) return 0
+  let lo = 0, hi = childBoxes.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (childBoxes[mid].y + childBoxes[mid].height < sy) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+let renderMs = 0
+let visCount = 0
+
+// Draw rounded rect helper (avoids reliance on newer roundRect API)
+function rrect(x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.arcTo(x + w, y, x + w, y + r, r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
+  ctx.lineTo(x + r, y + h)
+  ctx.arcTo(x, y + h, x, y + h - r, r)
+  ctx.lineTo(x, y + r)
+  ctx.arcTo(x, y, x + r, y, r)
+  ctx.closePath()
+}
+
+function drawFrame(sy) {
+  const t0 = performance.now()
+
+  // Background
+  ctx.fillStyle = '#07070f'
+  ctx.fillRect(0, 0, CW, CH)
+
+  // Scrolling dot grid
+  const GS = 48
+  const gOY = ((-(sy % GS)) + GS) % GS
+  ctx.fillStyle = 'rgba(255,255,255,0.016)'
+  for (let gx = 24; gx < CW - 12; gx += GS) {
+    for (let gy = gOY; gy < CH; gy += GS) {
+      ctx.fillRect(gx, gy, 1, 1)
+    }
+  }
+
+  // Find and draw visible boxes
+  const first = findFirst(sy)
+  visCount = 0
+
+  for (let i = first; i < childBoxes.length; i++) {
+    const b = childBoxes[i]
+    const dy = b.y - sy
+    if (dy > CH) break
+    const bottom = dy + b.height
+    if (bottom < 0) continue
+    visCount++
+
+    if (b.isText && S.showText) {
+      // ── Text node ──
+      ctx.fillStyle = b.featured
+        ? 'rgba(0,232,181,0.14)'
+        : 'rgba(0,232,181,0.055)'
+      ctx.fillRect(b.x + 4, dy + 0.5, b.width - 4, b.height - 1)
+
+      // Left border
+      ctx.fillStyle = b.featured ? '#00e8b5' : 'rgba(0,232,181,0.75)'
+      ctx.fillRect(b.x, dy + 0.5, 2.5, b.height - 1)
+
+      // Stroke
+      ctx.strokeStyle = b.featured
+        ? 'rgba(0,232,181,0.45)'
+        : 'rgba(0,232,181,0.18)'
+      ctx.lineWidth = 0.5
+      ctx.strokeRect(b.x + 4, dy + 0.5, b.width - 4, b.height - 1)
+
+      // Label
+      if (b.height >= 32 && dy >= 0) {
+        ctx.font = '10px JetBrains Mono, monospace'
+        ctx.fillStyle = b.featured
+          ? 'rgba(0,232,181,0.88)'
+          : 'rgba(0,232,181,0.48)'
+        const label = b.featured
+          ? `text node · id:${b.nodeId} · ${b.width}×${b.height}`
+          : `text ${b.nodeId}`
+        ctx.fillText(label, b.x + 11, dy + b.height / 2 + 3.5)
+      }
+
+    } else {
+      // ── Box node ──
+      ctx.fillStyle = b.featured
+        ? 'rgba(108,122,255,0.14)'
+        : 'rgba(108,122,255,0.042)'
+      ctx.fillRect(b.x + 4, dy + 0.5, b.width - 4, b.height - 1)
+
+      // Left border
+      ctx.fillStyle = b.featured ? '#6c7aff' : 'rgba(108,122,255,0.42)'
+      ctx.fillRect(b.x, dy + 0.5, 2.5, b.height - 1)
+
+      // Label on featured
+      if (b.featured && b.height >= 22 && dy >= 0) {
+        ctx.font = '10px JetBrains Mono, monospace'
+        ctx.fillStyle = 'rgba(108,122,255,0.65)'
+        ctx.fillText(`box ${b.nodeId} · ${b.width}×${b.height}`, b.x + 11, dy + b.height / 2 + 3.5)
+      }
+    }
+  }
+
+  // ── Scrollbar ──
+  const trackX = CW - 10
+  ctx.fillStyle = 'rgba(255,255,255,0.035)'
+  ctx.fillRect(trackX, 0, 10, CH)
+
+  const maxSY = Math.max(1, totalH - CH)
+  const thumbH = Math.max(18, (CH / Math.max(totalH, 1)) * CH)
+  const thumbY = Math.min(CH - thumbH, (sy / maxSY) * (CH - thumbH))
+  ctx.fillStyle = 'rgba(0,232,181,0.38)'
+  ctx.fillRect(trackX + 2, thumbY, 6, thumbH)
+
+  // ── Canvas canvas-only badges ──
+  if (!S.recordMode) {
+    // Watermark
+    ctx.font = '9px JetBrains Mono, monospace'
+    ctx.fillStyle = 'rgba(255,255,255,0.1)'
+    ctx.textAlign = 'right'
+    ctx.fillText('layout-sans v0.1.0 · @BaselAshraf81', CW - 18, CH - 10)
+    ctx.textAlign = 'left'
+
+    // Pills
+    const pills = ['Pure TS', 'No WASM', 'Works in Workers']
+    let px = 10
+    const py = CH - 28
+    ctx.font = '9px JetBrains Mono, monospace'
+    for (const p of pills) {
+      const tw = ctx.measureText(p).width
+      const pw = tw + 14, ph = 16
+
+      ctx.fillStyle = 'rgba(7,7,15,0.75)'
+      rrect(px, py, pw, ph, 8); ctx.fill()
+
+      ctx.strokeStyle = 'rgba(0,232,181,0.2)'; ctx.lineWidth = 0.5
+      rrect(px, py, pw, ph, 8); ctx.stroke()
+
+      ctx.fillStyle = 'rgba(0,232,181,0.5)'
+      ctx.fillText(p, px + 7, py + 10.5)
+      px += pw + 5
+    }
+  }
+
+  renderMs = performance.now() - t0
+}
+
+// ── FPS ───────────────────────────────────────────────────────────────────────
+let fps = 0, fCount = 0, fLast = 0
+
+function tickFps(now) {
+  if (fLast === 0) { fLast = now; return }
+  fCount++
+  if (now - fLast >= 600) {
+    fps = Math.round(fCount * 1000 / (now - fLast))
+    fCount = 0; fLast = now
+  }
+}
+
+// ── Update DOM overlays ───────────────────────────────────────────────────────
+let lastOverlayUpdate = 0
+
+function updateOverlays(now) {
+  if (now - lastOverlayUpdate < 60) return
+  lastOverlayUpdate = now
+
+  const fpsStr = fps > 0 ? String(fps) : '—'
+  document.getElementById('fps-num').textContent = fpsStr
+  document.getElementById('hdr-fps').textContent = fpsStr
+  document.getElementById('hdr-count').textContent = S.count.toLocaleString()
+  document.getElementById('pv-items').textContent = S.count.toLocaleString()
+  document.getElementById('pv-compute').textContent = computeMs.toFixed(2) + ' ms'
+  document.getElementById('pv-render').textContent = renderMs.toFixed(2) + ' ms'
+  document.getElementById('pv-vis').textContent = visCount.toLocaleString()
+  document.getElementById('sb-vis').textContent = visCount.toLocaleString()
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function loop(now) {
+  tickFps(now)
+
+  if (S.autoScroll && !S.paused) {
+    S.scrollY += S.speed
+    const maxSY = Math.max(0, totalH - CH)
+    if (S.scrollY >= maxSY) S.scrollY = 0
+  }
+
+  drawFrame(S.scrollY)
+  updateOverlays(now)
+  requestAnimationFrame(loop)
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+
+// Count slider
+document.getElementById('sl-count').addEventListener('input', e => {
+  S.count = parseInt(e.target.value)
+  document.getElementById('sb-count').textContent = S.count.toLocaleString()
+  S.scrollY = 0
+  buildLayout()
+})
+
+// Speed slider
+document.getElementById('sl-speed').addEventListener('input', e => {
+  const v = parseInt(e.target.value)
+  S.speed = v * 0.1
+  document.getElementById('sb-speed').textContent = (v * 0.1).toFixed(1) + '×'
+})
+
+// Toggle: random heights
+document.getElementById('tog-rand').addEventListener('click', () => {
+  S.randomH = !S.randomH
+  document.getElementById('tt-rand').classList.toggle('on', S.randomH)
+  buildLayout()
+})
+
+// Toggle: text node markers
+document.getElementById('tog-text').addEventListener('click', () => {
+  S.showText = !S.showText
+  document.getElementById('tt-text').classList.toggle('on', S.showText)
+})
+
+// Toggle: auto-scroll
+document.getElementById('tog-auto').addEventListener('click', () => {
+  S.autoScroll = !S.autoScroll
+  document.getElementById('tt-auto').classList.toggle('on', S.autoScroll)
+})
+
+// Regenerate
+document.getElementById('btn-regen').addEventListener('click', () => {
+  S.seed = (Math.random() * 0xffffffff) | 0
+  S.scrollY = 0
+  buildLayout()
+})
+
+// Reset scroll
+document.getElementById('btn-reset').addEventListener('click', () => {
+  S.scrollY = 0
+})
+
+// Record mode
+document.getElementById('rec-btn').addEventListener('click', () => {
+  S.recordMode = !S.recordMode
+  document.body.classList.toggle('rec', S.recordMode)
+  document.getElementById('rec-btn').classList.toggle('on', S.recordMode)
+  setTimeout(() => { resizeCanvas(); buildLayout() }, 60)
+})
+
+// Sidebar tab
+const sidebarEl = document.getElementById('sidebar')
+const sbTab = document.getElementById('sb-tab')
+sbTab.addEventListener('click', () => {
+  S.sidebarOpen = !S.sidebarOpen
+  sidebarEl.classList.toggle('closed', !S.sidebarOpen)
+  sbTab.textContent = S.sidebarOpen ? '‹' : '›'
+  setTimeout(() => { resizeCanvas(); buildLayout() }, 260)
+})
+
+// npm copy
+document.getElementById('npm-copy').addEventListener('click', () => {
+  navigator.clipboard?.writeText('npm install layout-sans').then(() => {
+    const el = document.getElementById('copy-tip')
+    el.textContent = 'copied! ✓'
+    el.classList.add('ok')
+    setTimeout(() => { el.textContent = 'click to copy'; el.classList.remove('ok') }, 2000)
+  })
+})
+
+// ── Scroll via wheel ──────────────────────────────────────────────────────────
+document.getElementById('cwrap').addEventListener('wheel', e => {
+  e.preventDefault()
+  S.scrollY = Math.max(0, Math.min(Math.max(0, totalH - CH), S.scrollY + e.deltaY * 0.8))
+}, { passive: false })
+
+// ── Drag scroll ───────────────────────────────────────────────────────────────
+let drag = null
+const cwrap = document.getElementById('cwrap')
+
+cwrap.addEventListener('mousedown', e => {
+  drag = { y: e.clientY, startScroll: S.scrollY }
+  S.autoScroll = false
+  document.getElementById('tt-auto').classList.remove('on')
+})
+document.addEventListener('mousemove', e => {
+  if (!drag) return
+  S.scrollY = Math.max(0, Math.min(Math.max(0, totalH - CH), drag.startScroll - (e.clientY - drag.y)))
+})
+document.addEventListener('mouseup', () => { drag = null })
+
+// ── Touch scroll ──────────────────────────────────────────────────────────────
+let touch = null
+cwrap.addEventListener('touchstart', e => {
+  touch = { y: e.touches[0].clientY, startScroll: S.scrollY }
+  S.autoScroll = false
+  document.getElementById('tt-auto').classList.remove('on')
+})
+cwrap.addEventListener('touchmove', e => {
+  if (!touch) return
+  e.preventDefault()
+  S.scrollY = Math.max(0, Math.min(Math.max(0, totalH - CH), touch.startScroll - (e.touches[0].clientY - touch.y)))
+}, { passive: false })
+cwrap.addEventListener('touchend', () => { touch = null })
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+const khelp = document.getElementById('khelp')
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return
+  switch (e.key) {
+    case ' ':
+      e.preventDefault()
+      S.paused = !S.paused
+      break
+    case 'r': case 'R':
+      S.seed = (Math.random() * 0xffffffff) | 0
+      S.scrollY = 0
+      buildLayout()
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      S.scrollY = Math.max(0, S.scrollY - 60)
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      S.scrollY = Math.min(Math.max(0, totalH - CH), S.scrollY + 60)
+      break
+    case 'Home':
+      e.preventDefault()
+      S.scrollY = 0
+      break
+    case 's': case 'S': {
+      S.sidebarOpen = !S.sidebarOpen
+      sidebarEl.classList.toggle('closed', !S.sidebarOpen)
+      sbTab.textContent = S.sidebarOpen ? '‹' : '›'
+      setTimeout(() => { resizeCanvas(); buildLayout() }, 260)
+      break
+    }
+    case 'f': case 'F': {
+      const ov = document.getElementById('perf-ov')
+      ov.style.display = ov.style.display === 'none' ? 'block' : 'none'
+      break
+    }
+    case '?':
+      khelp.classList.toggle('vis')
+      break
+    case 'Escape':
+      khelp.classList.remove('vis')
+      if (S.recordMode) {
+        S.recordMode = false
+        document.body.classList.remove('rec')
+        document.getElementById('rec-btn').classList.remove('on')
+        setTimeout(() => { resizeCanvas(); buildLayout() }, 60)
+      }
+      break
+  }
+})
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => { resizeCanvas(); buildLayout() })
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+;(async () => {
+  const initMsg = document.getElementById('init-msg')
+  const initOv  = document.getElementById('init-ov')
+
+  initMsg.textContent = 'Computing 100,000 item layout…'
+  resizeCanvas()
+
+  // Yield to let browser paint the spinner
+  await new Promise(r => setTimeout(r, 30))
+
+  const ms = buildLayout()
+
+  initMsg.textContent = `Done in ${ms.toFixed(1)} ms`
+  await new Promise(r => setTimeout(r, 500))
+  initOv.classList.add('gone')
+
+  requestAnimationFrame(loop)
+})()
+</script>
+</body>
+</html>

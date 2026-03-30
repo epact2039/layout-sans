@@ -4,7 +4,7 @@
 
 [![npm](https://img.shields.io/npm/v/layout-sans)](https://www.npmjs.com/package/layout-sans)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![bundle size](https://img.shields.io/badge/gzipped-%3C25kB-green)](https://bundlephobia.com/package/layout-sans)
+[![bundle size](https://img.shields.io/badge/gzipped-%3C5kB-green)](https://bundlephobia.com/package/layout-sans)
 
 ---
 

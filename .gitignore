@@ -3,5 +3,5 @@ dist/
 *.js.map
 *.cjs.map
 .DS_Store
-.github/
 claude_handoff/
+.github/assets/recording.mp4
