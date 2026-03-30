@@ -10,6 +10,8 @@
   </a>
 ---
 
+🚀 **[View the Live Interactive Demo](https://baselashraf81.github.io/layout-sans/demo/hero.html)**
+
 A pure TypeScript 2D layout engine. Give it a tree of boxes with flex/grid rules; get back exact pixel positions for every box. Works in Node, Bun, Deno, Cloudflare Workers, browser — anything that runs JS.
 
 ![LayoutSans — 100k variable-height boxes at 120 fps](https://github.com/BaselAshraf81/layout-sans/raw/main/.github/assets/hero.gif)
