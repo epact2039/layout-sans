@@ -1,0 +1,61 @@
+{
+  "name": "layout-sans",
+  "version": "0.1.0",
+  "description": "CSS Flex/Grid layout without the browser. No DOM. No WASM bloat.",
+  "author": "",
+  "license": "MIT",
+  "keywords": [
+    "layout",
+    "flexbox",
+    "grid",
+    "css",
+    "no-dom",
+    "pretext",
+    "virtualization",
+    "server-side",
+    "edge",
+    "node"
+  ],
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node esbuild.config.js && tsc -p tsconfig.build.json",
+    "bench": "tsx bench/benchmark.ts",
+    "demo": "tsx demo/basic-flex.ts",
+    "demo:magazine": "tsx demo/magazine.ts",
+    "demo:virtualization": "tsx demo/virtualization.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@chenglou/pretext": "*"
+  },
+  "peerDependenciesMeta": {
+    "@chenglou/pretext": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@chenglou/pretext": "^0.0.3",
+    "@types/node": "^25.5.0",
+    "esbuild": "^0.24.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
