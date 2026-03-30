@@ -5,7 +5,9 @@
 [![npm](https://img.shields.io/npm/v/layout-sans)](https://www.npmjs.com/package/layout-sans)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![bundle size](https://img.shields.io/badge/gzipped-%3C5kB-green)](https://bundlephobia.com/package/layout-sans)
-
+<a href="http://hits.dwyl.com/BaselAshraf81/layout-sans">
+    <img src="https://hits.dwyl.com/BaselAshraf81/layout-sans.svg?style=flat" alt="Hit Count">
+  </a>
 ---
 
 A pure TypeScript 2D layout engine. Give it a tree of boxes with flex/grid rules; get back exact pixel positions for every box. Works in Node, Bun, Deno, Cloudflare Workers, browser — anything that runs JS.
