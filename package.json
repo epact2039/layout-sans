@@ -2,8 +2,16 @@
   "name": "layout-sans",
   "version": "0.1.0",
   "description": "CSS Flex/Grid layout without the browser. No DOM. No WASM bloat.",
-  "author": "",
+  "author": "Basel Ashraf",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BaselAshraf81/layout-sans.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BaselAshraf81/layout-sans/issues"
+  },
+  "homepage": "https://baselashraf81.github.io/layout-sans/demo/hero.html",
   "keywords": [
     "layout",
     "flexbox",
