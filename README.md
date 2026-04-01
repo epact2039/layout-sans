@@ -8,6 +8,10 @@
 <a href="http://hits.dwyl.com/BaselAshraf81/layout-sans">
     <img src="https://hits.dwyl.com/BaselAshraf81/layout-sans.svg?style=flat" alt="Hit Count">
   </a>
+<a href="https://ko-fi.com/baselashraf">
+    <img src="https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white" alt="Support on Ko-fi">
+  </a>
+
 ---
 
 🚀 **[View the Live Interactive Demo](https://baselashraf81.github.io/layout-sans/demo/hero.html)**
@@ -355,6 +359,14 @@ Pro tip: Run the virtualization demo yourself — it stays buttery smooth even a
 - RTL layout
 - Full CSS grid (template columns/rows, named lines, span)
 - Baseline alignment
+
+---
+
+## Support
+
+If LayoutSans saves you time, consider buying me a coffee — it helps keep the project moving.
+
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/baselashraf)
 
 ---
 
