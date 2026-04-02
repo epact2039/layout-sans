@@ -8,7 +8,7 @@
 <a href="http://hits.dwyl.com/BaselAshraf81/layout-sans">
     <img src="https://hits.dwyl.com/BaselAshraf81/layout-sans.svg?style=flat" alt="Hit Count">
   </a>
-<a href="https://ko-fi.com/baselashraf">
+<a href="https://ko-fi.com/V7V01X2WY5">
     <img src="https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white" alt="Support on Ko-fi">
   </a>
 
@@ -366,7 +366,7 @@ Pro tip: Run the virtualization demo yourself — it stays buttery smooth even a
 
 If LayoutSans saves you time, consider buying me a coffee — it helps keep the project moving.
 
-[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/baselashraf)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V01X2WY5)
 
 ---
 
