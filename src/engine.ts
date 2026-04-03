@@ -2,7 +2,7 @@
 // The main layout orchestrator. Routes each node type to its solver, manages
 // the recursion, and flattens the output into a BoxRecord[].
 
-import type { Node, BoxRecord, LayoutOptions, FlexNode, GridNode, MagazineNode, AbsoluteNode, TextNode, BoxNode } from './types.js'
+import type { Node, BoxRecord, LayoutOptions, FlexNode, GridNode, MagazineNode, AbsoluteNode, TextNode, BoxNode, LinkNode, HeadingNode } from './types.js'
 import { solveFlex, solveFlexColumn, solveFlexRow, measureFlexSize } from './flex.js'
 import { solveGrid, measureGridSize } from './grid.js'
 import { solveMagazine } from './magazine.js'
@@ -71,41 +71,41 @@ export class LayoutEngine {
         const fastCol = solveFlexColumn(node as FlexNode, nodeId, width, this.ctx)
         if (fastCol !== null) {
           const contH = node.height ?? fastCol.totalHeight
-          const out: BoxRecord[] = [{ nodeId: id, x, y, width, height: contH }]
+          const out: BoxRecord[] = [{ nodeId: id, x, y, width, height: contH, nodeType: 'flex' }]
           const children = fastCol.records
           for (let i = 0; i < children.length; i++) {
             const r = children[i]!
-            out.push({ nodeId: r.nodeId, x: r.x + x, y: r.y + y, width: r.width, height: r.height })
+            out.push({ nodeId: r.nodeId, x: r.x + x, y: r.y + y, width: r.width, height: r.height, nodeType: r.nodeType })
           }
           return out
         }
         const fastRow = solveFlexRow(node as FlexNode, nodeId, height, this.ctx)
         if (fastRow !== null) {
           const contW = node.width ?? fastRow.totalWidth
-          const out: BoxRecord[] = [{ nodeId: id, x, y, width: contW, height }]
+          const out: BoxRecord[] = [{ nodeId: id, x, y, width: contW, height, nodeType: 'flex' }]
           const children = fastRow.records
           for (let i = 0; i < children.length; i++) {
             const r = children[i]!
-            out.push({ nodeId: r.nodeId, x: r.x + x, y: r.y + y, width: r.width, height: r.height })
+            out.push({ nodeId: r.nodeId, x: r.x + x, y: r.y + y, width: r.width, height: r.height, nodeType: r.nodeType })
           }
           return out
         }
         const result = solveFlex(node as FlexNode, nodeId, width, height, this.ctx)
-        const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height }]
+        const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'flex' }]
         pushAll(out, result.records)
         return out
       }
 
       case 'grid': {
         const result = solveGrid(node as GridNode, nodeId, width, height, this.ctx)
-        const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height }]
+        const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'grid' }]
         pushAll(out, result.records)
         return out
       }
 
       case 'magazine': {
         const result = solveMagazine(node as MagazineNode, nodeId, width, height, this.ctx, this.pretext)
-        const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height }]
+        const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'magazine' }]
         pushAll(out, result.records)
         return out
       }
@@ -113,14 +113,56 @@ export class LayoutEngine {
       case 'absolute': {
         // Bug #1 fix: use result.x / result.y — not the first child's coords
         const result = solveAbsolute(node as AbsoluteNode, nodeId, x, y, width, height, this.ctx)
-        const out: BoxRecord[] = [{ nodeId: id, x: result.x, y: result.y, width: result.width, height: result.height }]
+        const out: BoxRecord[] = [{ nodeId: id, x: result.x, y: result.y, width: result.width, height: result.height, nodeType: 'absolute' }]
         pushAll(out, result.records)
         return out
       }
 
       case 'text': {
         const measured = this.measureNode(node, nodeId, width, height)
-        return [{ nodeId: id, x, y, width: measured.width, height: measured.height }]
+        return [{ nodeId: id, x, y, width: measured.width, height: measured.height, nodeType: 'text', textContent: (node as TextNode).content }]
+      }
+
+      case 'heading': {
+        const hn = node as HeadingNode
+        const measured = this.measureNode(node, nodeId, width, height)
+        return [{ nodeId: id, x, y, width: measured.width, height: measured.height, nodeType: 'heading', textContent: hn.content }]
+      }
+
+      case 'link': {
+        // A link wraps children — solve them inside the link bounding box, then
+        // emit the container record with href/target/rel followed by child records.
+        const ln = node as LinkNode
+        const autoRel = ln.target === '_blank' && ln.rel === undefined
+          ? 'noopener noreferrer'
+          : ln.rel
+        const linkChildren = ln.children ?? []
+        // Treat as an implicit flex column so children stack naturally.
+        // exactOptionalPropertyTypes: build without undefined keys, then cast.
+        // All fields are structurally valid FlexNode properties; the cast is safe.
+        const syntheticFlex = {
+          type: 'flex' as const,
+          direction: 'column' as const,
+          width: ln.width ?? width,
+          height: ln.height ?? height,
+          children: linkChildren,
+          ...(ln.padding          !== undefined && { padding:       ln.padding }),
+          ...(ln.paddingTop       !== undefined && { paddingTop:    ln.paddingTop }),
+          ...(ln.paddingRight     !== undefined && { paddingRight:  ln.paddingRight }),
+          ...(ln.paddingBottom    !== undefined && { paddingBottom: ln.paddingBottom }),
+          ...(ln.paddingLeft      !== undefined && { paddingLeft:   ln.paddingLeft }),
+        } as FlexNode
+        const result = solveFlex(syntheticFlex, nodeId, width, height, this.ctx)
+        const out: BoxRecord[] = [{
+          nodeId: id, x, y,
+          width: result.width, height: result.height,
+          nodeType: 'link',
+          href: ln.href,
+          ...(ln.target  !== undefined && { target: ln.target }),
+          ...(autoRel    !== undefined && { rel:    autoRel }),
+        }]
+        pushAll(out, result.records)
+        return out
       }
 
       case 'box':
@@ -128,7 +170,7 @@ export class LayoutEngine {
         // A box with no children just occupies its given space
         const boxW = (node as BoxNode).width ?? width
         const boxH = (node as BoxNode).height ?? height
-        return [{ nodeId: id, x, y, width: boxW, height: boxH }]
+        return [{ nodeId: id, x, y, width: boxW, height: boxH, nodeType: 'box' }]
       }
     }
   }
@@ -151,6 +193,28 @@ export class LayoutEngine {
           width: node.width ?? availableWidth,
           height: node.height ?? availableHeight,
         }
+      }
+
+      case 'heading': {
+        // Measure heading like text — font/lineHeight from the node.
+        const hn = node as HeadingNode
+        const syntheticText = {
+          type: 'text' as const,
+          content: hn.content,
+          ...(hn.font       !== undefined && { font:       hn.font }),
+          ...(hn.lineHeight !== undefined && { lineHeight: hn.lineHeight }),
+          ...(hn.width      !== undefined && { width:      hn.width }),
+        } as TextNode
+        const w = hn.width ?? availableWidth
+        const result = measureTextSync(syntheticText, w, this.pretext)
+        return { width: result.width, height: result.height }
+      }
+
+      case 'link': {
+        // A link's size is determined by its children — measure via full solve.
+        const records = this.solveNode(node, 'measure', 0, 0, availableWidth, availableHeight)
+        if (records.length === 0) return { width: availableWidth, height: availableHeight }
+        return { width: records[0]!.width, height: records[0]!.height }
       }
 
       case 'flex':

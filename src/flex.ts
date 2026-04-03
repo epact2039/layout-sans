@@ -302,7 +302,7 @@ export function solveFlexColumn(
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!
     const id = child.id ?? `${nodeId}.${i}`
-    records[i] = { nodeId: id, x: padding.left, y, width: child.width!, height: child.height! }
+    records[i] = { nodeId: id, x: padding.left, y, width: child.width!, height: child.height!, nodeType: 'box' }
     y += child.height! + gap
   }
 
@@ -342,7 +342,7 @@ export function solveFlexRow(
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!
     const id = child.id ?? `${nodeId}.${i}`
-    records[i] = { nodeId: id, x, y: padding.top, width: child.width!, height: child.height! }
+    records[i] = { nodeId: id, x, y: padding.top, width: child.width!, height: child.height!, nodeType: 'box' }
     x += child.width! + gap
   }
 
