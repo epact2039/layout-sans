@@ -2,6 +2,8 @@ export { createLayout, LayoutEngine } from './engine.js';
 export { SpatialIndex } from './rtree.js';
 export { SelectionState, resolvePixelToCursor, normalizeSelection, getSelectedText, charOffsetToCursor, segmentIndexToCursor, segmentWidthOnLine } from './selection.js';
 export { attachMouseHandlers } from './mouse.js';
+export { InteractionBridge, cursorToCharOffset, expandToWordBoundaries } from './bridge.js';
+export type { InteractionOptions } from './bridge.js';
 export { paintSelection, paintSearchHighlights, paintFocusRing, charRangeToRect } from './paint.js';
 export type { Node, FlexNode, BoxNode, TextNode, AbsoluteNode, GridNode, MagazineNode, LinkNode, HeadingNode, BoxRecord, TextLineData, SelectionCursor, SelectionRange, LayoutOptions, } from './types.js';
 export type { BBox } from './rtree.js';

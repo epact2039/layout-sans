@@ -11,6 +11,10 @@ export { SelectionState,
          segmentIndexToCursor,
          segmentWidthOnLine }         from './selection.js'
 export { attachMouseHandlers }        from './mouse.js'
+export { InteractionBridge,
+         cursorToCharOffset,
+         expandToWordBoundaries }     from './bridge.js'
+export type { InteractionOptions }   from './bridge.js'
 export { paintSelection,
          paintSearchHighlights,
          paintFocusRing,
