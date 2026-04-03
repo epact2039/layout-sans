@@ -72,6 +72,16 @@ export declare class SelectionState {
  */
 export declare function resolvePixelToCursor(nodeId: string, localX: number, localY: number, tld: TextLineData): SelectionCursor;
 /**
+ * Width contributed by segment `si` on a line, accounting for partial segments
+ * (startGi > 0 when a long word was broken mid-segment onto this line, or
+ *  endGi > 0 when the segment is truncated at the line's end cursor).
+ *
+ * Falls back to prepared.widths[si] when breakablePrefixWidths[si] is null
+ * (single-grapheme or non-breakable segments are never split mid-grapheme).
+ */
+export declare function segmentWidthOnLine(prepared: import('@chenglou/pretext').PreparedTextWithSegments, si: number, startGi: number, // inclusive
+endGi: number): number;
+/**
  * Normalise a SelectionRange so that `start` is always document-earlier than
  * `end`, returning [start, end, isReversed].
  *
@@ -90,3 +100,23 @@ export declare function normalizeSelection(range: SelectionRange, orderedIds: re
  * @param source      A TextLayoutSource (LayoutEngine satisfies this structurally).
  */
 export declare function getSelectedText(range: SelectionRange, source: TextLayoutSource): string;
+/**
+ * Convert a grapheme-counted character offset into a SelectionCursor.
+ *
+ * Used by LayoutEngine.setSelection() and the mobile long-press Proxy Caret
+ * sync path (PRD §6.3, Step 5).
+ *
+ * The `charOffset` is counted in Pretext grapheme units — matching the same
+ * model as SelectionCursor.graphemeIndex. Walk segments in line order until
+ * the cumulative count reaches the target.
+ */
+export declare function charOffsetToCursor(prepared: import('@chenglou/pretext').PreparedTextWithSegments, charOffset: number, tld: TextLineData): SelectionCursor;
+/**
+ * Convert a (lineIndex, segmentIndex, graphemeIndex) triple into a
+ * SelectionCursor with a pre-computed pixelX.
+ *
+ * Called by charOffsetToCursor and the word-expansion logic in mouse.ts.
+ * Pre-computes pixelX by walking segment widths from the line start to `si`,
+ * then querying breakablePrefixWidths — zero measureText() calls.
+ */
+export declare function segmentIndexToCursor(tld: TextLineData, lineIndex: number, si: number, gi: number, prepared?: import('@chenglou/pretext').PreparedTextWithSegments): SelectionCursor;

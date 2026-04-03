@@ -1,16 +1,32 @@
-// LayoutSans — engine.ts
+// LayoutSans — engine.ts (v0.2)
 // The main layout orchestrator. Routes each node type to its solver, manages
 // the recursion, and flattens the output into a BoxRecord[].
+//
+// v0.2 additions:
+//   • textLineMap — per-node PreparedTextWithSegments + LayoutLine[] data,
+//     populated during compute() for every text/heading node.
+//   • buildIndex() — off-critical-path R-Tree construction.
+//   • selection — singleton SelectionState owned by this engine.
+//   • getAllRecords() / getTextLineData() / getOrderedTextNodeIds() — data
+//     access API for the interaction and render layers.
+//   • setSelection() / clearSelection() — programmatic selection control.
+//   • Satisfies TextLayoutSource (structural interface from selection.ts).
 
-import type { Node, BoxRecord, LayoutOptions, FlexNode, GridNode, MagazineNode, AbsoluteNode, TextNode, BoxNode, LinkNode, HeadingNode } from './types.js'
+import type {
+  Node, BoxRecord, LayoutOptions,
+  FlexNode, GridNode, MagazineNode, AbsoluteNode, TextNode, BoxNode, LinkNode, HeadingNode,
+  TextLineData,
+} from './types.js'
 import { solveFlex, solveFlexColumn, solveFlexRow, measureFlexSize } from './flex.js'
 import { solveGrid, measureGridSize } from './grid.js'
 import { solveMagazine } from './magazine.js'
 import { solveAbsolute } from './absolute.js'
-import { measureTextSync } from './measure.js'
-import { getPaddingBox, type SolverContext } from './utils.js'
+import { measureTextSync, measureTextWithLinesSync } from './measure.js'
+import { type SolverContext } from './utils.js'
+import { SpatialIndex } from './rtree.js'
+import { SelectionState, charOffsetToCursor } from './selection.js'
 
-/** O(1)-stack push helper — never uses spread, safe at 100k+ records (Bug #2). */
+/** O(1)-stack push helper — never uses spread, safe at 100k+ records. */
 function pushAll<T>(target: T[], source: T[]): void {
   for (let i = 0; i < source.length; i++) target.push(source[i]!)
 }
@@ -20,6 +36,41 @@ export class LayoutEngine {
   private options: LayoutOptions
   private pretext: typeof import('@chenglou/pretext') | null = null
 
+  // ── v0.2 state ──────────────────────────────────────────────────────────────
+
+  /**
+   * Per-node segment/line data. Populated by compute() for every text/heading
+   * node when Pretext is available. The selection engine reads this during
+   * mousemove without calling measureText(). Satisfies TextLayoutSource.
+   */
+  readonly textLineMap: Map<string, TextLineData> = new Map()
+
+  /**
+   * Node ids of text/heading nodes in document (depth-first tree) order.
+   * Populated during compute(). Used by normalizeSelection() and paintSelection().
+   */
+  private _orderedTextNodeIds: string[] = []
+
+  /** Last compute() result — stored so buildIndex() can read it off the hot path. */
+  private _lastRecords: BoxRecord[] = []
+
+  /** Spatial R-Tree index. Null until buildIndex() resolves. */
+  private _spatialIndex: SpatialIndex | null = null
+
+  /** True once buildIndex() has completed successfully. */
+  private _indexReady = false
+
+  /**
+   * Hit-tests queued while the index was still building.
+   * Replayed immediately after buildIndex() resolves.
+   */
+  private _pendingHitTests: Array<{ x: number; y: number; resolve: (ids: string[]) => void }> = []
+
+  /** Singleton selection state. Read by the canvas RAF loop and Proxy Caret. */
+  readonly selection: SelectionState = new SelectionState()
+
+  // ── Constructor ─────────────────────────────────────────────────────────────
+
   constructor(root: Node, options: LayoutOptions = {}) {
     this.root = root
     this.options = options
@@ -27,24 +78,177 @@ export class LayoutEngine {
 
   /**
    * Inject a pre-loaded Pretext module for synchronous text measurement.
-   * Call this before compute() if you want accurate text sizing.
+   * Must be called before compute() for selection support to work.
    */
   usePretext(mod: typeof import('@chenglou/pretext')): this {
     this.pretext = mod
     return this
   }
 
+  // ── compute() ───────────────────────────────────────────────────────────────
+
   /**
    * Compute the layout. Returns a flat array of positioned BoxRecords.
-   * Each record maps to one node in the input tree via nodeId.
+   *
+   * v0.2: Also populates `textLineMap` and `_orderedTextNodeIds` for every
+   * text/heading node that has Pretext available. Invalidates the spatial index —
+   * call buildIndex() after re-computing.
    */
   compute(): BoxRecord[] {
+    this.textLineMap.clear()
+    this._orderedTextNodeIds = []
+    this._spatialIndex = null
+    this._indexReady = false
+    this._pendingHitTests = []
+
     const rootW = this.options.width ?? this.root.width ?? 0
     const rootH = this.options.height ?? this.root.height ?? 0
-    return this.ctx.solveNode(this.root, '0', 0, 0, rootW, rootH)
+    this._lastRecords = this.ctx.solveNode(this.root, '0', 0, 0, rootW, rootH)
+    return this._lastRecords
   }
 
-  // ── Context (bound to this engine instance) ─────────────────────────────
+  // ── buildIndex() ────────────────────────────────────────────────────────────
+
+  /**
+   * Build the Spatial R-Tree index from the last compute() result.
+   *
+   * Runs off the critical path via requestIdleCallback (fallback: setTimeout).
+   * Returns a Promise that resolves when the index is ready. Hit-tests
+   * that arrive before this resolves are queued and replayed automatically.
+   */
+  buildIndex(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const build = () => {
+        this._spatialIndex = new SpatialIndex(this._lastRecords)
+        this._indexReady = true
+
+        // Replay any hit-tests that arrived during construction.
+        const queued = this._pendingHitTests.splice(0)
+        for (const item of queued) {
+          item.resolve(this._spatialIndex.queryPoint(item.x, item.y))
+        }
+
+        resolve()
+      }
+
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(() => build(), { timeout: 100 })
+      } else {
+        setTimeout(build, 0)
+      }
+    })
+  }
+
+  // ── Data access ─────────────────────────────────────────────────────────────
+
+  /** All BoxRecords from the last compute(), in tree-traversal order. */
+  getAllRecords(): BoxRecord[] {
+    return this._lastRecords
+  }
+
+  /**
+   * TextLineData for a specific text or heading node.
+   * Returns null for non-text nodes or when Pretext was unavailable.
+   */
+  getTextLineData(nodeId: string): TextLineData | null {
+    return this.textLineMap.get(nodeId) ?? null
+  }
+
+  /**
+   * Node ids of all text/heading nodes in document order.
+   * Satisfies the TextLayoutSource interface used by selection helpers.
+   */
+  getOrderedTextNodeIds(): readonly string[] {
+    return this._orderedTextNodeIds
+  }
+
+  /** The spatial R-Tree index. Null until buildIndex() resolves. */
+  get spatialIndex(): SpatialIndex | null {
+    return this._spatialIndex
+  }
+
+  /**
+   * Async hit-test. If the index isn't ready yet, queues the query
+   * and resolves when buildIndex() completes.
+   *
+   * @param x  World X (canvas-space, scrollY already added by caller).
+   * @param y  World Y (canvas-space, scrollY already added by caller).
+   */
+  queryPoint(x: number, y: number, maxResults = 1): Promise<string[]> {
+    if (this._indexReady && this._spatialIndex) {
+      return Promise.resolve(this._spatialIndex.queryPoint(x, y, maxResults))
+    }
+    return new Promise<string[]>((resolve) => {
+      this._pendingHitTests.push({ x, y, resolve })
+    })
+  }
+
+  // ── Selection API ────────────────────────────────────────────────────────────
+
+  /**
+   * Programmatically set the selection to a character range.
+   * startChar / endChar are grapheme-counted offsets into the node's text.
+   * No-op if the node ids are not found in textLineMap.
+   */
+  setSelection(
+    startNodeId: string,
+    startChar: number,
+    endNodeId: string,
+    endChar: number,
+  ): void {
+    const startTld = this.textLineMap.get(startNodeId)
+    const endTld   = this.textLineMap.get(endNodeId)
+    if (!startTld || !endTld) return
+
+    const anchor = charOffsetToCursor(startTld.prepared, startChar, startTld)
+    const focus  = charOffsetToCursor(endTld.prepared, endChar, endTld)
+    this.selection.set({ anchor, focus })
+  }
+
+  /** Clear the active selection. */
+  clearSelection(): void {
+    this.selection.clear()
+  }
+
+  /**
+   * Copy the currently selected text to the OS clipboard.
+   * Returns false when nothing is selected or clipboard API is unavailable.
+   */
+  async copySelectedText(): Promise<boolean> {
+    const range = this.selection.get()
+    if (!range) return false
+
+    const { getSelectedText } = await import('./selection.js')
+    const text = getSelectedText(range, this)
+    if (!text) return false
+
+    try {
+      // navigator.clipboard requires a secure context (HTTPS / localhost).
+      // Cast via unknown to avoid lib-specific Clipboard API type gaps.
+      await (navigator as unknown as { clipboard: { writeText(s: string): Promise<void> } })
+        .clipboard.writeText(text)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Extract the plain text of the entire layout tree in document order.
+   * Each visual line is separated by a newline.
+   */
+  extractText(): string {
+    const parts: string[] = []
+    for (const id of this._orderedTextNodeIds) {
+      const tld = this.textLineMap.get(id)
+      if (tld) {
+        for (const line of tld.lines) parts.push(line.text)
+      }
+    }
+    return parts.join('\n')
+  }
+
+  // ── Context (bound to this engine instance) ─────────────────────────────────
 
   private ctx: SolverContext = {
     solveNode: (node: Node, nodeId: string, x: number, y: number, width: number, height: number): BoxRecord[] => {
@@ -54,6 +258,8 @@ export class LayoutEngine {
       return this.measureNode(node, nodeId, availableWidth, availableHeight)
     },
   }
+
+  // ── solveNode ───────────────────────────────────────────────────────────────
 
   private solveNode(
     node: Node,
@@ -67,7 +273,6 @@ export class LayoutEngine {
 
     switch (node.type) {
       case 'flex': {
-        // Try the O(n) fast paths first (no 3-pass solver needed for simple cases)
         const fastCol = solveFlexColumn(node as FlexNode, nodeId, width, this.ctx)
         if (fastCol !== null) {
           const contH = node.height ?? fastCol.totalHeight
@@ -111,7 +316,6 @@ export class LayoutEngine {
       }
 
       case 'absolute': {
-        // Bug #1 fix: use result.x / result.y — not the first child's coords
         const result = solveAbsolute(node as AbsoluteNode, nodeId, x, y, width, height, this.ctx)
         const out: BoxRecord[] = [{ nodeId: id, x: result.x, y: result.y, width: result.width, height: result.height, nodeType: 'absolute' }]
         pushAll(out, result.records)
@@ -119,27 +323,19 @@ export class LayoutEngine {
       }
 
       case 'text': {
-        const measured = this.measureNode(node, nodeId, width, height)
-        return [{ nodeId: id, x, y, width: measured.width, height: measured.height, nodeType: 'text', textContent: (node as TextNode).content }]
+        return this.solveTextNode(node as TextNode, id, x, y, width)
       }
 
       case 'heading': {
-        const hn = node as HeadingNode
-        const measured = this.measureNode(node, nodeId, width, height)
-        return [{ nodeId: id, x, y, width: measured.width, height: measured.height, nodeType: 'heading', textContent: hn.content }]
+        return this.solveHeadingNode(node as HeadingNode, id, x, y, width)
       }
 
       case 'link': {
-        // A link wraps children — solve them inside the link bounding box, then
-        // emit the container record with href/target/rel followed by child records.
         const ln = node as LinkNode
         const autoRel = ln.target === '_blank' && ln.rel === undefined
           ? 'noopener noreferrer'
           : ln.rel
         const linkChildren = ln.children ?? []
-        // Treat as an implicit flex column so children stack naturally.
-        // exactOptionalPropertyTypes: build without undefined keys, then cast.
-        // All fields are structurally valid FlexNode properties; the cast is safe.
         const syntheticFlex = {
           type: 'flex' as const,
           direction: 'column' as const,
@@ -167,13 +363,64 @@ export class LayoutEngine {
 
       case 'box':
       default: {
-        // A box with no children just occupies its given space
         const boxW = (node as BoxNode).width ?? width
         const boxH = (node as BoxNode).height ?? height
         return [{ nodeId: id, x, y, width: boxW, height: boxH, nodeType: 'box' }]
       }
     }
   }
+
+  /**
+   * Solve a text node, building TextLineData alongside the BoxRecord.
+   *
+   * Prefers measureTextWithLinesSync() — produces TextLineData with zero extra
+   * measureText() calls at runtime. Falls back to measureTextSync() when
+   * Pretext is unavailable (node becomes non-selectable).
+   */
+  private solveTextNode(node: TextNode, id: string, x: number, y: number, width: number): BoxRecord[] {
+    const w = node.width ?? width
+
+    if (this.pretext) {
+      const result = measureTextWithLinesSync(node, w, this.pretext, id, x, y)
+      if (result) {
+        this.textLineMap.set(id, result.textLineData)
+        this._orderedTextNodeIds.push(id)
+        return [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'text', textContent: node.content }]
+      }
+    }
+
+    const measured = measureTextSync(node, w, this.pretext)
+    return [{ nodeId: id, x, y, width: measured.width, height: measured.height, nodeType: 'text', textContent: node.content }]
+  }
+
+  /**
+   * Solve a heading node. Headings are measured identically to text nodes;
+   * the level surfaces in the Shadow Semantic Tree (Phase 3).
+   */
+  private solveHeadingNode(node: HeadingNode, id: string, x: number, y: number, width: number): BoxRecord[] {
+    const w = node.width ?? width
+    const syntheticText: TextNode = {
+      type: 'text',
+      content: node.content,
+      ...(node.font       !== undefined && { font:       node.font }),
+      ...(node.lineHeight !== undefined && { lineHeight: node.lineHeight }),
+      ...(node.width      !== undefined && { width:      node.width }),
+    }
+
+    if (this.pretext) {
+      const result = measureTextWithLinesSync(syntheticText, w, this.pretext, id, x, y)
+      if (result) {
+        this.textLineMap.set(id, result.textLineData)
+        this._orderedTextNodeIds.push(id)
+        return [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'heading', textContent: node.content }]
+      }
+    }
+
+    const measured = measureTextSync(syntheticText, w, this.pretext)
+    return [{ nodeId: id, x, y, width: measured.width, height: measured.height, nodeType: 'heading', textContent: node.content }]
+  }
+
+  // ── measureNode ─────────────────────────────────────────────────────────────
 
   private measureNode(
     node: Node,
@@ -196,7 +443,6 @@ export class LayoutEngine {
       }
 
       case 'heading': {
-        // Measure heading like text — font/lineHeight from the node.
         const hn = node as HeadingNode
         const syntheticText = {
           type: 'text' as const,
@@ -211,7 +457,6 @@ export class LayoutEngine {
       }
 
       case 'link': {
-        // A link's size is determined by its children — measure via full solve.
         const records = this.solveNode(node, 'measure', 0, 0, availableWidth, availableHeight)
         if (records.length === 0) return { width: availableWidth, height: availableHeight }
         return { width: records[0]!.width, height: records[0]!.height }
@@ -221,11 +466,8 @@ export class LayoutEngine {
       case 'grid':
       case 'magazine':
       case 'absolute': {
-        // Perf #3 fix: use lightweight size-only paths instead of allocating all records
         if (node.type === 'flex') return measureFlexSize(node as FlexNode, availableWidth, availableHeight, this.ctx)
         if (node.type === 'grid') return measureGridSize(node as GridNode, availableWidth, availableHeight, this.ctx)
-        // magazine / absolute: fall back to full solve but only read root size
-        // (rare in practice — these are usually root-level, not measured by a parent)
         const records = this.solveNode(node, 'measure', 0, 0, availableWidth, availableHeight)
         if (records.length === 0) return { width: availableWidth, height: availableHeight }
         return { width: records[0]!.width, height: records[0]!.height }
@@ -239,11 +481,11 @@ export class LayoutEngine {
 
 /**
  * Create a LayoutEngine for a node tree.
- * Call .compute() to get the flat BoxRecord[].
  *
  * @example
- * const engine = createLayout(root)
+ * const engine = createLayout(root).usePretext(pretext)
  * const boxes = engine.compute()
+ * await engine.buildIndex()
  */
 export function createLayout(root: Node, options?: LayoutOptions): LayoutEngine {
   return new LayoutEngine(root, options)

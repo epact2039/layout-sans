@@ -186,7 +186,7 @@ export function resolvePixelToCursor(
  * Falls back to prepared.widths[si] when breakablePrefixWidths[si] is null
  * (single-grapheme or non-breakable segments are never split mid-grapheme).
  */
-function segmentWidthOnLine(
+export function segmentWidthOnLine(
   prepared: import('@chenglou/pretext').PreparedTextWithSegments,
   si: number,
   startGi: number, // inclusive
@@ -458,4 +458,102 @@ function extractLineText(
   }
 
   return text
+}
+
+// ─── Cursor conversion utilities ──────────────────────────────────────────────
+
+/**
+ * Convert a grapheme-counted character offset into a SelectionCursor.
+ *
+ * Used by LayoutEngine.setSelection() and the mobile long-press Proxy Caret
+ * sync path (PRD §6.3, Step 5).
+ *
+ * The `charOffset` is counted in Pretext grapheme units — matching the same
+ * model as SelectionCursor.graphemeIndex. Walk segments in line order until
+ * the cumulative count reaches the target.
+ */
+export function charOffsetToCursor(
+  prepared: import('@chenglou/pretext').PreparedTextWithSegments,
+  charOffset: number,
+  tld: TextLineData,
+): SelectionCursor {
+  let remaining = charOffset
+
+  for (let li = 0; li < tld.lines.length; li++) {
+    const line = tld.lines[li]!
+
+    for (let si = line.start.segmentIndex; si <= line.end.segmentIndex; si++) {
+      // Number of graphemes in this segment (on this line).
+      const pfx = prepared.breakablePrefixWidths[si]
+      const startGi = si === line.start.segmentIndex ? line.start.graphemeIndex : 0
+      const endGi   = si === line.end.segmentIndex   ? line.end.graphemeIndex   : 0
+      const graphemeCount = pfx && pfx.length > 0
+        ? (endGi > 0 ? endGi : pfx.length) - startGi
+        : 1
+
+      if (remaining <= graphemeCount) {
+        return segmentIndexToCursor(tld, li, si, startGi + remaining, prepared)
+      }
+
+      remaining -= graphemeCount
+    }
+  }
+
+  // Offset exceeds text length — clamp to end of last line.
+  const lastLi   = tld.lines.length - 1
+  const lastLine  = tld.lines[lastLi]!
+  const lastSi    = lastLine.end.segmentIndex
+  const lastGi    = lastLine.end.graphemeIndex
+  const pixelX    = lastLine.width
+
+  return {
+    nodeId: tld.nodeId,
+    lineIndex: lastLi,
+    segmentIndex: lastSi,
+    graphemeIndex: lastGi,
+    pixelX,
+  }
+}
+
+/**
+ * Convert a (lineIndex, segmentIndex, graphemeIndex) triple into a
+ * SelectionCursor with a pre-computed pixelX.
+ *
+ * Called by charOffsetToCursor and the word-expansion logic in mouse.ts.
+ * Pre-computes pixelX by walking segment widths from the line start to `si`,
+ * then querying breakablePrefixWidths — zero measureText() calls.
+ */
+export function segmentIndexToCursor(
+  tld: TextLineData,
+  lineIndex: number,
+  si: number,
+  gi: number,
+  prepared?: import('@chenglou/pretext').PreparedTextWithSegments,
+): SelectionCursor {
+  const p = prepared ?? tld.prepared
+  const line = tld.lines[lineIndex]
+  if (!line) {
+    return { nodeId: tld.nodeId, lineIndex, segmentIndex: si, graphemeIndex: gi, pixelX: 0 }
+  }
+
+  // Accumulate pixel width from the start of the line to the target segment.
+  let accX = 0
+  for (let s = line.start.segmentIndex; s < si; s++) {
+    const startGi = s === line.start.segmentIndex ? line.start.graphemeIndex : 0
+    accX += segmentWidthOnLine(p, s, startGi, 0)
+  }
+
+  // Pixel X within segment `si` at grapheme `gi`.
+  let pixelX = accX
+  const pfx     = p.breakablePrefixWidths[si]
+  const baseGi  = si === line.start.segmentIndex ? line.start.graphemeIndex : 0
+  const base    = pfx && baseGi > 0 ? pfx[baseGi - 1]! : 0
+
+  if (pfx && pfx.length > 0 && gi > 0) {
+    pixelX = accX + (pfx[gi - 1] ?? pfx[pfx.length - 1]!) - base
+  } else if ((!pfx || pfx.length === 0) && gi > 0) {
+    pixelX = accX + (p.widths[si] ?? 0)
+  }
+
+  return { nodeId: tld.nodeId, lineIndex, segmentIndex: si, graphemeIndex: gi, pixelX }
 }
