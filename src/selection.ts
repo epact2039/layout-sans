@@ -442,9 +442,18 @@ function extractLineText(
 
     // Determine the grapheme slice [gi0, gi1).
     const gi0 = isStartSeg ? startGi : 0
-    // endGi is exclusive (cursor before that grapheme). 0 means end-of-segment
-    // unless this is the end segment with an explicit endGi > 0.
-    const gi1 = isEndSeg && endGi > 0 ? endGi : graphemes.length
+
+    // endGi is exclusive (cursor before that grapheme). 0 means end-of-segment.
+    //
+    // IMPORTANT: for non-breakable segments (breakablePrefixWidths[si] is null
+    // or empty), graphemeIndex is a binary position marker: 0 = before the
+    // whole segment, 1 = after the whole segment. It does NOT mean "1 grapheme
+    // of content". Without this guard, a non-breakable word like "Architecture"
+    // with endGi=1 would yield graphemes.slice(0, 1) = ["A"] instead of the
+    // full word. Non-breakable segments always take graphemes.length.
+    const pfxForSeg = prepared.breakablePrefixWidths[si]
+    const isNonBreakable = !pfxForSeg || pfxForSeg.length === 0
+    const gi1 = isEndSeg && endGi > 0 && !isNonBreakable ? endGi : graphemes.length
 
     // Validate and slice.
     const safeGi0 = Math.max(0, Math.min(gi0, graphemes.length))
@@ -487,9 +496,13 @@ export function charOffsetToCursor(
       const pfx = prepared.breakablePrefixWidths[si]
       const startGi = si === line.start.segmentIndex ? line.start.graphemeIndex : 0
       const endGi   = si === line.end.segmentIndex   ? line.end.graphemeIndex   : 0
+      // For non-breakable segments (pfx null/empty), count actual JS string
+      // characters so this matches charOffset values from String.indexOf().
+      // Using pfx.length=0 as a proxy for 1 grapheme was wrong: a single
+      // non-breakable segment like "Architecture" has 12 chars, not 1.
       const graphemeCount = pfx && pfx.length > 0
         ? (endGi > 0 ? endGi : pfx.length) - startGi
-        : 1
+        : (prepared.segments[si]?.length ?? 1)
 
       if (remaining <= graphemeCount) {
         return segmentIndexToCursor(tld, li, si, startGi + remaining, prepared)

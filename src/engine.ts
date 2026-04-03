@@ -31,6 +31,25 @@ function pushAll<T>(target: T[], source: T[]): void {
   for (let i = 0; i < source.length; i++) target.push(source[i]!)
 }
 
+/**
+ * Push all BoxRecords from `source` into `target`, translating each record's
+ * (x, y) by the given (dx, dy) offset.
+ *
+ * Used when a layout solver (solveFlex, solveGrid, solveMagazine) returns
+ * records in LOCAL coordinates (relative to the container's own origin) and
+ * the engine needs to convert them to ABSOLUTE canvas coordinates by adding
+ * the container's absolute position.
+ *
+ * solveAbsolute is exempt — it already resolves child coordinates to absolute
+ * canvas space internally.
+ */
+function pushAllOffset(target: BoxRecord[], source: BoxRecord[], dx: number, dy: number): void {
+  for (let i = 0; i < source.length; i++) {
+    const r = source[i]!
+    target.push({ ...r, x: r.x + dx, y: r.y + dy })
+  }
+}
+
 export class LayoutEngine {
   private root: Node
   private options: LayoutOptions
@@ -297,21 +316,21 @@ export class LayoutEngine {
         }
         const result = solveFlex(node as FlexNode, nodeId, width, height, this.ctx)
         const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'flex' }]
-        pushAll(out, result.records)
+        pushAllOffset(out, result.records, x, y)
         return out
       }
 
       case 'grid': {
         const result = solveGrid(node as GridNode, nodeId, width, height, this.ctx)
         const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'grid' }]
-        pushAll(out, result.records)
+        pushAllOffset(out, result.records, x, y)
         return out
       }
 
       case 'magazine': {
         const result = solveMagazine(node as MagazineNode, nodeId, width, height, this.ctx, this.pretext)
         const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'magazine' }]
-        pushAll(out, result.records)
+        pushAllOffset(out, result.records, x, y)
         return out
       }
 
@@ -357,7 +376,7 @@ export class LayoutEngine {
           ...(ln.target  !== undefined && { target: ln.target }),
           ...(autoRel    !== undefined && { rel:    autoRel }),
         }]
-        pushAll(out, result.records)
+        pushAllOffset(out, result.records, x, y)
         return out
       }
 

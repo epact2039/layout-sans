@@ -32,6 +32,17 @@ export interface MouseHandlerOptions {
    */
   getScrollY: () => number
   /**
+   * Returns the current horizontal content offset in CSS pixels.
+   *
+   * If the canvas uses `ctx.translate(ox, 0)` to center content horizontally,
+   * pass `() => ox` here. The value is subtracted from the raw canvas-space X
+   * coordinate in toWorldCoords(), converting it to world-space X that matches
+   * the BoxRecord coordinate system.
+   *
+   * Default: `() => 0` (no horizontal offset — content starts at canvas edge).
+   */
+  getContentOffsetX?: () => number
+  /**
    * Called whenever the selection changes and the canvas should be repainted.
    * Typically schedules a requestAnimationFrame if one isn't already pending.
    */
@@ -85,11 +96,20 @@ export function attachMouseHandlers(opts: MouseHandlerOptions): () => void {
    * into the transform and matches the BoxRecord coordinate system.
    *
    * scrollY is added to convert from viewport-relative to world-relative Y.
+   *
+   * getContentOffsetX() is subtracted from X to account for ctx.translate(ox, 0)
+   * horizontal centering. BoxRecords are in world space (x=0 at content start),
+   * but raw mouse events are in canvas space (x=0 at the canvas left edge).
+   * Without this subtraction, localX = worldX - record.x is inflated by ox,
+   * causing sub-glyph resolution to place the cursor ox pixels too far right.
+   * paintSelection then draws at (originX + pixelX) and the canvas translate
+   * adds ox again, doubling the offset visually.
    */
   function toWorldCoords(e: MouseEvent): { x: number; y: number } {
     const rect = canvas.getBoundingClientRect()
+    const ox = opts.getContentOffsetX?.() ?? 0
     return {
-      x: e.clientX - rect.left,
+      x: e.clientX - rect.left - ox,
       y: e.clientY - rect.top + getScrollY(),
     }
   }

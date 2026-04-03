@@ -268,9 +268,14 @@ export function charRangeToRect(
       const pfx = prepared.breakablePrefixWidths[si]
       const startGi = si === line.start.segmentIndex ? line.start.graphemeIndex : 0
       const endGi   = si === line.end.segmentIndex   ? line.end.graphemeIndex   : 0
+      // For non-breakable segments (pfx null/empty), use the actual JS string
+      // character count so that charStart/charEnd values from String.indexOf()
+      // align with the per-grapheme offset counter used in the loop below.
+      // Using 1 was wrong: a single non-breakable segment like "Architecture"
+      // spans 12 characters, so each word must contribute its full char length.
       const graphemesInSeg = pfx && pfx.length > 0
         ? (endGi > 0 ? endGi : pfx.length) - startGi
-        : 1
+        : (prepared.segments[si]?.length ?? 1)
       const segW = segmentWidthOnLine(prepared, si, startGi, endGi)
 
       for (let g = 0; g < graphemesInSeg; g++) {
