@@ -350,12 +350,21 @@ Pro tip: Run the virtualization demo yourself — it stays buttery smooth even a
 - Pretext integration for text measurement
 - Virtualization-ready flat output
 
-**v0.2**
-- Accessibility tree output (ARIA role + label per record)
-- Named grid template areas
-- CSS `aspect-ratio`
+**v0.2 — in progress**
+- Pure-canvas text selection with native OS clipboard integration
+- Spatial hit-testing via packed R-Tree (O(log n) queries)
+- Interactive hyperlinks with keyboard navigation
+- Full-text search (Ctrl+F) with canvas highlighting
+- Shadow semantic tree for screen reader accessibility
+- Mobile long-press selection with native handles
+- Zero visual DOM layout (O(viewport) semantic nodes only)
 
 **v0.3**
+- Named grid template areas
+- CSS `aspect-ratio`
+- Enhanced accessibility tree output (ARIA role + label per record)
+
+**v0.4**
 - RTL layout
 - Full CSS grid (template columns/rows, named lines, span)
 - Baseline alignment
