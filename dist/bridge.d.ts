@@ -1,5 +1,6 @@
 import type { LayoutEngine } from './engine.js';
 import type { TextLineData, SelectionCursor } from './types.js';
+import { FocusController } from './focus.js';
 /**
  * Options passed to `engine.mount()` / `new InteractionBridge()`.
  *
@@ -65,6 +66,10 @@ export declare class InteractionBridge {
     private readonly options;
     /** The single Proxy Caret textarea. Injected once, never recreated. */
     private readonly proxyCaret;
+    /** Virtualized accessibility DOM (screen reader + keyboard nav). */
+    private readonly shadowTree;
+    /** Canvas focus-ring state driven by shadow <a> focus/blur events. */
+    readonly focusController: FocusController;
     /**
      * nodeId of the TextNode whose text is currently mirrored into the Proxy
      * Caret. Null when the caret is at rest (0×0). Tracked so that incoming
@@ -95,26 +100,35 @@ export declare class InteractionBridge {
      */
     private lastScrollY;
     /**
-     * Called every animation frame with the current scroll position, AFTER
-     * the canvas frame has been painted.
+     * Canvas viewport height in CSS pixels, derived from the canvas element's
+     * clientHeight. Cached and updated each sync() call to avoid a layout read
+     * per frame (one read per frame is acceptable; it is a cheap property).
+     */
+    private viewportH;
+    /**
+     * Sync all DOM subsystems to the current viewport state.
      *
-     * In v0.2.0 (Task 5/6 scope) this method is intentionally minimal: it keeps
-     * the Proxy Caret's absolute position in sync with the canvas offset so that
-     * any stray OS focus events land at the correct screen coordinate.
+     * Called every animation frame by the caller's RAF loop, AFTER the canvas
+     * frame has been painted. Execution budget: < 2ms (PRD §13).
      *
-     * v0.2.2 (Task 7) will extend this to also call
-     * ShadowSemanticTree.sync(records, scrollY, viewportH, textLineMap).
+     * Responsibilities:
+     *   1. Update cached scroll + viewport geometry.
+     *   2. Drive ShadowSemanticTree.sync() — virtualizes accessibility DOM.
+     *   3. FocusController.setRecords() is called only when records change
+     *      (from rebuild()), not every frame, to avoid Map allocation churn.
      *
-     * Execution budget: < 2ms (PRD §13).
-     * Hot path: ONE style write (transform) if position changed; zero DOM reads.
+     * No DOM reads except `canvas.clientHeight` (compositor-safe; no layout
+     * recalculation triggered because we do not write layout properties before
+     * reading it in this method).
      */
     sync(scrollY: number): void;
     /**
-     * Force-rebuild any internal state from the current engine.compute() result.
-     * Call after the engine recomputes (layout changes).
+     * Force-rebuild all internal state from the current engine.compute() result.
+     * Call after engine recomputes (layout changes).
      *
-     * Currently resets the mobile mirror state so stale TextLineData references
-     * are dropped. Task 7 will add ShadowSemanticTree.rebuild() here.
+     * - Resets mobile mirror state (stale TextLineData references dropped).
+     * - Rebuilds the ShadowSemanticTree (flushes all mounted nodes).
+     * - Updates the FocusController's record map.
      */
     rebuild(): void;
     /**

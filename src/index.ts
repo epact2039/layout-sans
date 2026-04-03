@@ -15,6 +15,10 @@ export { InteractionBridge,
          cursorToCharOffset,
          expandToWordBoundaries }     from './bridge.js'
 export type { InteractionOptions }   from './bridge.js'
+export { ShadowSemanticTree,
+         BUFFER_VIEWPORTS,
+         MAX_SHADOW_NODES }           from './shadow.js'
+export { FocusController }           from './focus.js'
 export { paintSelection,
          paintSearchHighlights,
          paintFocusRing,

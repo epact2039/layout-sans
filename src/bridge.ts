@@ -32,6 +32,8 @@
 import type { LayoutEngine }        from './engine.js'
 import type { TextLineData, SelectionCursor } from './types.js'
 import { charOffsetToCursor, getSelectedText, normalizeSelection, segmentIndexToCursor } from './selection.js'
+import { ShadowSemanticTree } from './shadow.js'
+import { FocusController }    from './focus.js'
 
 // ─── InteractionOptions ───────────────────────────────────────────────────────
 
@@ -127,6 +129,12 @@ export class InteractionBridge {
   /** The single Proxy Caret textarea. Injected once, never recreated. */
   private readonly proxyCaret: HTMLTextAreaElement
 
+  /** Virtualized accessibility DOM (screen reader + keyboard nav). */
+  private readonly shadowTree: ShadowSemanticTree
+
+  /** Canvas focus-ring state driven by shadow <a> focus/blur events. */
+  readonly focusController: FocusController
+
   // ── State ─────────────────────────────────────────────────────────────────
 
   /**
@@ -169,6 +177,16 @@ export class InteractionBridge {
   ) {
     this.proxyCaret = this.createProxyCaret()
     this.mountProxyCaret()
+
+    // Shadow Semantic Tree + Focus Controller — constructed after the Proxy
+    // Caret so the canvas parent already exists in the DOM.
+    const parent = this.canvas.parentElement ?? document.body
+    this.shadowTree     = new ShadowSemanticTree(parent)
+    this.focusController = new FocusController(canvas)
+    this.shadowTree.attachFocusController(this.focusController)
+    // Seed the focus controller's record map from any already-computed records.
+    this.focusController.setRecords(engine.getAllRecords())
+
     this.attachDesktopClipboardHandlers()
     this.attachMobileTouchHandlers()
     this.attachSelectionChangeListener()
@@ -184,39 +202,52 @@ export class InteractionBridge {
   private lastScrollY = 0
 
   /**
-   * Called every animation frame with the current scroll position, AFTER
-   * the canvas frame has been painted.
+   * Canvas viewport height in CSS pixels, derived from the canvas element's
+   * clientHeight. Cached and updated each sync() call to avoid a layout read
+   * per frame (one read per frame is acceptable; it is a cheap property).
+   */
+  private viewportH = 0
+
+  /**
+   * Sync all DOM subsystems to the current viewport state.
    *
-   * In v0.2.0 (Task 5/6 scope) this method is intentionally minimal: it keeps
-   * the Proxy Caret's absolute position in sync with the canvas offset so that
-   * any stray OS focus events land at the correct screen coordinate.
+   * Called every animation frame by the caller's RAF loop, AFTER the canvas
+   * frame has been painted. Execution budget: < 2ms (PRD §13).
    *
-   * v0.2.2 (Task 7) will extend this to also call
-   * ShadowSemanticTree.sync(records, scrollY, viewportH, textLineMap).
+   * Responsibilities:
+   *   1. Update cached scroll + viewport geometry.
+   *   2. Drive ShadowSemanticTree.sync() — virtualizes accessibility DOM.
+   *   3. FocusController.setRecords() is called only when records change
+   *      (from rebuild()), not every frame, to avoid Map allocation churn.
    *
-   * Execution budget: < 2ms (PRD §13).
-   * Hot path: ONE style write (transform) if position changed; zero DOM reads.
+   * No DOM reads except `canvas.clientHeight` (compositor-safe; no layout
+   * recalculation triggered because we do not write layout properties before
+   * reading it in this method).
    */
   sync(scrollY: number): void {
     this.lastScrollY = scrollY
-    // Shadow Semantic Tree sync will be added in Task 7.
-    // The Proxy Caret does not need per-frame repositioning at rest because it
-    // is 0×0. When the mobile mirror is active (handlesActive), the caret was
-    // positioned absolutely during long-press population (§6.3 Step 3) and
-    // doesn't move between frames — the user is holding still during handle drag.
+    this.viewportH   = this.canvas.clientHeight
+
+    const records     = this.engine.getAllRecords()
+    const textLineMap = this.engine.textLineMap
+
+    this.shadowTree.sync(records, scrollY, this.viewportH, textLineMap)
   }
 
   /**
-   * Force-rebuild any internal state from the current engine.compute() result.
-   * Call after the engine recomputes (layout changes).
+   * Force-rebuild all internal state from the current engine.compute() result.
+   * Call after engine recomputes (layout changes).
    *
-   * Currently resets the mobile mirror state so stale TextLineData references
-   * are dropped. Task 7 will add ShadowSemanticTree.rebuild() here.
+   * - Resets mobile mirror state (stale TextLineData references dropped).
+   * - Rebuilds the ShadowSemanticTree (flushes all mounted nodes).
+   * - Updates the FocusController's record map.
    */
   rebuild(): void {
     this.resetProxyCaretToRest()
-    this.handlesActive = false
+    this.handlesActive  = false
     this.mirroredNodeId = null
+    this.shadowTree.rebuild()
+    this.focusController.setRecords(this.engine.getAllRecords())
   }
 
   /**
@@ -228,6 +259,8 @@ export class InteractionBridge {
     this.cleanup.length = 0
     this.proxyCaret.remove()
     this.cancelLongPress()
+    this.shadowTree.destroy()
+    this.focusController.destroy()
   }
 
   // ── Proxy Caret construction ───────────────────────────────────────────────
