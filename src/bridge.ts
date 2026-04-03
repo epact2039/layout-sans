@@ -34,6 +34,7 @@ import type { TextLineData, SelectionCursor } from './types.js'
 import { charOffsetToCursor, getSelectedText, normalizeSelection, segmentIndexToCursor } from './selection.js'
 import { ShadowSemanticTree } from './shadow.js'
 import { FocusController }    from './focus.js'
+import { LayoutSearch }       from './search.js'
 
 // ─── InteractionOptions ───────────────────────────────────────────────────────
 
@@ -83,6 +84,24 @@ export interface InteractionOptions {
    * selection is empty. Called synchronously inside SelectionState.onChange().
    */
   onSelectionChange?: (text: string) => void
+
+  /**
+   * Called by the search engine's scroll-to-match animation on every RAF frame.
+   * The caller must update their scrollY state variable and schedule a repaint.
+   *
+   * If not provided, the bridge manages scrollY internally — callers using the
+   * bridge's `sync(scrollY)` pattern should pass their setState/setter here.
+   */
+  onScrollTo?: (y: number) => void
+
+  /**
+   * Trigger a canvas repaint outside the normal RAF loop.
+   * Called when the search panel closes (to erase highlights) and when
+   * search results change while the panel is open.
+   *
+   * If not provided, callers are responsible for repainting on the next frame.
+   */
+  requestRepaint?: () => void
 }
 
 // ─── Internal constants ───────────────────────────────────────────────────────
@@ -135,6 +154,9 @@ export class InteractionBridge {
   /** Canvas focus-ring state driven by shadow <a> focus/blur events. */
   readonly focusController: FocusController
 
+  /** In-memory full-text search engine + optional panel UI. */
+  readonly search: LayoutSearch
+
   // ── State ─────────────────────────────────────────────────────────────────
 
   /**
@@ -186,6 +208,18 @@ export class InteractionBridge {
     this.shadowTree.attachFocusController(this.focusController)
     // Seed the focus controller's record map from any already-computed records.
     this.focusController.setRecords(engine.getAllRecords())
+
+    // Search engine — scroll callbacks are closures over `this` so they
+    // always read the most-recent lastScrollY / viewportH.
+    this.search = new LayoutSearch(engine, parent, {
+      onScrollTo:    (y) => { this.lastScrollY = y; this.options.onScrollTo?.(y) },
+      getScrollY:    () => this.lastScrollY,
+      getViewportH:  () => this.viewportH || this.canvas.clientHeight,
+      ...(options.searchUI         !== undefined && { searchUI:          options.searchUI }),
+      ...(options.searchHighlightColor !== undefined && { inactiveMatchColor: options.searchHighlightColor }),
+      ...(options.searchActiveColor    !== undefined && { activeMatchColor:   options.searchActiveColor }),
+      ...(options.requestRepaint   !== undefined && { requestRepaint:    options.requestRepaint }),
+    })
 
     this.attachDesktopClipboardHandlers()
     this.attachMobileTouchHandlers()

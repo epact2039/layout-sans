@@ -1,6 +1,7 @@
 import type { LayoutEngine } from './engine.js';
 import type { TextLineData, SelectionCursor } from './types.js';
 import { FocusController } from './focus.js';
+import { LayoutSearch } from './search.js';
 /**
  * Options passed to `engine.mount()` / `new InteractionBridge()`.
  *
@@ -42,6 +43,22 @@ export interface InteractionOptions {
      * selection is empty. Called synchronously inside SelectionState.onChange().
      */
     onSelectionChange?: (text: string) => void;
+    /**
+     * Called by the search engine's scroll-to-match animation on every RAF frame.
+     * The caller must update their scrollY state variable and schedule a repaint.
+     *
+     * If not provided, the bridge manages scrollY internally — callers using the
+     * bridge's `sync(scrollY)` pattern should pass their setState/setter here.
+     */
+    onScrollTo?: (y: number) => void;
+    /**
+     * Trigger a canvas repaint outside the normal RAF loop.
+     * Called when the search panel closes (to erase highlights) and when
+     * search results change while the panel is open.
+     *
+     * If not provided, callers are responsible for repainting on the next frame.
+     */
+    requestRepaint?: () => void;
 }
 /**
  * Manages the OS Bridge subsystem described in PRD §6.
@@ -70,6 +87,8 @@ export declare class InteractionBridge {
     private readonly shadowTree;
     /** Canvas focus-ring state driven by shadow <a> focus/blur events. */
     readonly focusController: FocusController;
+    /** In-memory full-text search engine + optional panel UI. */
+    readonly search: LayoutSearch;
     /**
      * nodeId of the TextNode whose text is currently mirrored into the Proxy
      * Caret. Null when the caret is at rest (0×0). Tracked so that incoming

@@ -6,6 +6,8 @@ export { InteractionBridge, cursorToCharOffset, expandToWordBoundaries } from '.
 export type { InteractionOptions } from './bridge.js';
 export { ShadowSemanticTree, BUFFER_VIEWPORTS, MAX_SHADOW_NODES } from './shadow.js';
 export { FocusController } from './focus.js';
+export { LayoutSearch } from './search.js';
+export type { SearchOptions, SearchConstructorOptions } from './search.js';
 export { paintSelection, paintSearchHighlights, paintFocusRing, charRangeToRect } from './paint.js';
 export type { Node, FlexNode, BoxNode, TextNode, AbsoluteNode, GridNode, MagazineNode, LinkNode, HeadingNode, BoxRecord, TextLineData, SelectionCursor, SelectionRange, LayoutOptions, } from './types.js';
 export type { BBox } from './rtree.js';

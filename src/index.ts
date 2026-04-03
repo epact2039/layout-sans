@@ -19,6 +19,9 @@ export { ShadowSemanticTree,
          BUFFER_VIEWPORTS,
          MAX_SHADOW_NODES }           from './shadow.js'
 export { FocusController }           from './focus.js'
+export { LayoutSearch }              from './search.js'
+export type { SearchOptions,
+              SearchConstructorOptions } from './search.js'
 export { paintSelection,
          paintSearchHighlights,
          paintFocusRing,
