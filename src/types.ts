@@ -66,6 +66,19 @@ export interface TextLineData {
   originY: number
 }
 
+export interface SelectionCursor {
+  nodeId: string
+  lineIndex: number
+  segmentIndex: number
+  graphemeIndex: number
+  pixelX: number
+}
+
+export interface SelectionRange {
+  anchor: SelectionCursor
+  focus: SelectionCursor
+}
+
 // ─── Shared base ─────────────────────────────────────────────────────────────
 
 interface BaseNode {
