@@ -56,6 +56,17 @@ export interface TextLineData {
     /** Cached record.y — avoids a Map lookup in the mousemove hot path. */
     originY: number;
 }
+export interface SelectionCursor {
+    nodeId: string;
+    lineIndex: number;
+    segmentIndex: number;
+    graphemeIndex: number;
+    pixelX: number;
+}
+export interface SelectionRange {
+    anchor: SelectionCursor;
+    focus: SelectionCursor;
+}
 interface BaseNode {
     /** Optional stable id. Auto-assigned as tree path ('0', '0.1', '0.1.2') if omitted. */
     id?: string;
