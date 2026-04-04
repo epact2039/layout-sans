@@ -1,6 +1,6 @@
 {
   "name": "layout-sans",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "CSS Flex/Grid layout without the browser. No DOM. No WASM bloat.",
   "author": "Basel Ashraf",
   "license": "MIT",
