@@ -518,6 +518,14 @@ export function charOffsetToCursor(
       const pfx = prepared.breakablePrefixWidths[si]
       const startGi = si === line.start.segmentIndex ? line.start.graphemeIndex : 0
       const endGi   = si === line.end.segmentIndex   ? line.end.graphemeIndex   : 0
+
+      // The line.end cursor is exclusive: when endGi === 0, the segment at
+      // line.end.segmentIndex is the first segment of the NEXT line and has
+      // zero graphemes on this visual line. Counting it here would inflate
+      // `remaining` so that charOffset values targeting later lines resolve
+      // to the wrong (earlier) line.
+      if (si === line.end.segmentIndex && endGi === 0) continue
+
       // For non-breakable segments (pfx null/empty), count actual JS string
       // characters so this matches charOffset values from String.indexOf().
       // Using pfx.length=0 as a proxy for 1 grapheme was wrong: a single

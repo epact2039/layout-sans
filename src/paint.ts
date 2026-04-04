@@ -268,6 +268,14 @@ export function charRangeToRect(
       const pfx = prepared.breakablePrefixWidths[si]
       const startGi = si === line.start.segmentIndex ? line.start.graphemeIndex : 0
       const endGi   = si === line.end.segmentIndex   ? line.end.graphemeIndex   : 0
+
+      // The line.end cursor is exclusive: when endGi === 0, the segment at
+      // line.end.segmentIndex is the first segment of the NEXT line. It has
+      // zero graphemes on this visual line — skip it so we neither advance
+      // `count` (which would corrupt absoluteCount for chars on later lines)
+      // nor advance lineX (its width belongs to the next line's X origin).
+      if (si === line.end.segmentIndex && endGi === 0) continue
+
       // For non-breakable segments (pfx null/empty), use the actual JS string
       // character count so that charStart/charEnd values from String.indexOf()
       // align with the per-grapheme offset counter used in the loop below.

@@ -192,6 +192,7 @@ export function measureTextWithLinesSync(
     lines: linesResult.lines,
     prepared,
     lineHeight,
+    font: node.font ?? '16px sans-serif',
     originX,
     originY,
   }

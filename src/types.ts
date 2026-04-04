@@ -60,6 +60,13 @@ export interface TextLineData {
   prepared: PreparedTextWithSegments
   /** Line height in px used during layout (matches the canvas paint value). */
   lineHeight: number
+  /**
+   * The CSS font string this node was measured with (e.g. '15px/1.65 Inter, sans-serif').
+   * Must be assigned to ctx.font before painting — using a different font than the one
+   * Pretext measured with will cause glyph widths to differ from the stored segment widths,
+   * making selection highlights appear at the wrong positions.
+   */
+  font: string
   /** Cached record.x — avoids a Map lookup in the mousemove hot path. */
   originX: number
   /** Cached record.y — avoids a Map lookup in the mousemove hot path. */

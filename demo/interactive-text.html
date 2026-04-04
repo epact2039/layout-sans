@@ -1077,23 +1077,25 @@ function paintTextBox(b, dy) {
 
   const isHeading = b.nodeType === 'heading'
 
-  // Select font and color by node type
+  // Select font and color by node type.
+  // CRITICAL: ctx.font MUST match the font Pretext used for measurement (tld.font).
+  // Using a different font makes glyph widths diverge from the stored segment widths,
+  // causing selection rects to appear at wrong (compressed-left) positions.
   if (isHeading) {
     const level = detectHeadingLevel(b.nodeId)
     if (level === 1) {
-      ctx.font = FONT_H1
+      ctx.font = tld.font
       ctx.fillStyle = '#ffffff'
     } else if (level === 2) {
-      ctx.font = FONT_H2
+      ctx.font = tld.font
       ctx.fillStyle = '#e8eaff'
     } else {
-      ctx.font = FONT_H3
+      ctx.font = tld.font
       ctx.fillStyle = '#d4d6f8'
     }
   } else {
-    // Check if this is a code block (JetBrains Mono) or link text
-    const isCode = b.nodeId.includes && tld.prepared.segments.join('').includes('//')
-    ctx.font = isCode ? FONT_MONO : FONT_BODY
+    ctx.font = tld.font
+    const isCode = tld.prepared.segments.join('').includes('//')
     ctx.fillStyle = isCode ? '#a0d0ff' : '#c8cceb'
   }
 
