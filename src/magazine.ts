@@ -106,6 +106,7 @@ export function solveMagazine(
             y: colY,
             width: colW,
             height: h,
+            nodeType: 'text',
           })
         }
         colY += h
@@ -129,6 +130,7 @@ export function solveMagazine(
             y: colY,
             width: colW,
             height: h,
+            nodeType: 'text',
           })
 
           maxColH = Math.max(maxColH, colY - padding.top + h)

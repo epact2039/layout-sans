@@ -1,11 +1,78 @@
-import type { PreparedText } from '@chenglou/pretext';
-/** Final output record for a single node. Flat array of these from engine.compute(). */
+import type { PreparedText, PreparedTextWithSegments, LayoutLine } from '@chenglou/pretext';
+/**
+ * Final output record for a single node. Flat array of these from engine.compute().
+ *
+ * v0.2: Extended with nodeType, textContent, href/target/rel for the spatial
+ * hit-test engine and interaction layer. These are always present — consumers
+ * should gate on nodeType before reading the optional fields.
+ */
 export interface BoxRecord {
     nodeId: string;
     x: number;
     y: number;
     width: number;
     height: number;
+    /** Discriminator — mirrors the originating Node's `type` field. */
+    nodeType: Node['type'];
+    /**
+     * Plain-text string for this node.
+     * Populated for 'text' and 'heading' nodes; undefined for all others.
+     */
+    textContent?: string;
+    /** Link destination. Populated for 'link' nodes; undefined for all others. */
+    href?: string;
+    /** Link target (`_blank`, `_self`, …). Populated for 'link' nodes. */
+    target?: string;
+    /**
+     * Link relation attribute, e.g. `'noopener noreferrer'`.
+     * Populated for 'link' nodes; auto-defaulted to `'noopener noreferrer'` when
+     * target is `'_blank'` if not explicitly provided.
+     */
+    rel?: string;
+}
+/**
+ * Sub-glyph layout data retained after compute() for use by the selection
+ * engine's character-offset resolution procedure (PRD §3.3).
+ *
+ * Lives in `LayoutEngine.textLineMap: Map<string, TextLineData>` — one entry
+ * per text/heading node. The `prepared` handle keeps the Pretext segment data
+ * alive (breakableWidths, breakablePrefixWidths) so the hit-test hot path
+ * never calls measureText().
+ */
+export interface TextLineData {
+    nodeId: string;
+    /** Materialized lines from `layoutWithLines()`. Indexed by visual line number. */
+    lines: LayoutLine[];
+    /**
+     * The Pretext segment handle (result of `prepareWithSegments()`).
+     * Exposes `widths`, `breakableWidths`, `breakablePrefixWidths`, `segments`.
+     * Kept alive here — do not let it be GC'd.
+     */
+    prepared: PreparedTextWithSegments;
+    /** Line height in px used during layout (matches the canvas paint value). */
+    lineHeight: number;
+    /**
+     * The CSS font string this node was measured with (e.g. '15px/1.65 Inter, sans-serif').
+     * Must be assigned to ctx.font before painting — using a different font than the one
+     * Pretext measured with will cause glyph widths to differ from the stored segment widths,
+     * making selection highlights appear at the wrong positions.
+     */
+    font: string;
+    /** Cached record.x — avoids a Map lookup in the mousemove hot path. */
+    originX: number;
+    /** Cached record.y — avoids a Map lookup in the mousemove hot path. */
+    originY: number;
+}
+export interface SelectionCursor {
+    nodeId: string;
+    lineIndex: number;
+    segmentIndex: number;
+    graphemeIndex: number;
+    pixelX: number;
+}
+export interface SelectionRange {
+    anchor: SelectionCursor;
+    focus: SelectionCursor;
 }
 interface BaseNode {
     /** Optional stable id. Auto-assigned as tree path ('0', '0.1', '0.1.2') if omitted. */
@@ -119,7 +186,54 @@ export interface MagazineNode extends BaseNode {
     /** Line height in px. */
     lineHeight?: number;
 }
-export type Node = FlexNode | BoxNode | TextNode | AbsoluteNode | GridNode | MagazineNode;
+/**
+ * A hyperlink wrapper node.
+ *
+ * Rendered as a box in the layout tree. The canvas interaction layer intercepts
+ * clicks and calls `window.open(href, target)` or `window.location.assign(href)`.
+ * The Shadow Semantic Tree renders this as an `<a>` element for keyboard
+ * navigation and screen reader access.
+ *
+ * When `target` is `'_blank'` and `rel` is not provided, the engine automatically
+ * sets `rel = 'noopener noreferrer'` on the emitted BoxRecord.
+ */
+export interface LinkNode extends BaseNode {
+    type: 'link';
+    /** Destination URL. */
+    href: string;
+    /** Browsing context. Defaults to `'_self'` (same tab). */
+    target?: '_blank' | '_self' | '_parent' | '_top';
+    /**
+     * Link relation. Pass `'noopener noreferrer'` when opening in a new tab.
+     * Auto-defaulted if omitted and target is `'_blank'`.
+     */
+    rel?: string;
+    /** ARIA label override for screen readers (e.g. "View project on GitHub"). */
+    aria?: {
+        label?: string;
+    };
+    /** Child nodes laid out inside this link's bounding box. */
+    children?: Node[];
+}
+/**
+ * A heading node rendered directly as text (h1–h6 semantic level).
+ *
+ * Measured via Pretext like TextNode. The level is surfaced in the Shadow
+ * Semantic Tree as the correct `<h1>`–`<h6>` element and used by the
+ * selection engine to annotate copied text.
+ */
+export interface HeadingNode extends BaseNode {
+    type: 'heading';
+    /** Semantic heading level — maps to `<h1>`–`<h6>` in the Shadow Semantic Tree. */
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+    /** The heading text. */
+    content: string;
+    /** Font string as passed to Pretext's prepare(), e.g. '32px Inter Bold'. */
+    font?: string;
+    /** Line height in px. Default: fontSize * 1.2. */
+    lineHeight?: number;
+}
+export type Node = FlexNode | BoxNode | TextNode | AbsoluteNode | GridNode | MagazineNode | LinkNode | HeadingNode;
 export interface ResolvedNode {
     id: string;
     node: Node;

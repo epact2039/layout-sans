@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LayoutSans v0.2 — Interactive Text Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0b0b14;
+      --surface:   #12121f;
+      --surface2:  #1a1a2e;
+      --border:    rgba(255,255,255,0.07);
+      --accent:    #6c7aff;
+      --accent2:   #00e8b5;
+      --text:      #d0d4f0;
+      --muted:     #4a4a6a;
+      --coral:     #ff5757;
+      --warn:      #ffbd2e;
+      --inter:     'Inter', system-ui, sans-serif;
+      --mono:      'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--inter);
+      font-size: 13px;
+      overflow: hidden;
+    }
+
+    /* ── LAYOUT ──────────────────────────────────────────────────────────── */
+    .shell {
+      display: grid;
+      grid-template-rows: 48px 1fr 36px;
+      grid-template-columns: 260px 1fr 280px;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ──────────────────────────────────────────────────────────── */
+    .header {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 20px;
+      background: rgba(11,11,20,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      z-index: 50;
+    }
+
+    .logo {
+      font-weight: 800;
+      font-size: 18px;
+      color: #fff;
+      letter-spacing: -0.6px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .logo span { color: var(--accent); }
+
+    .header-badge {
+      background: rgba(108,122,255,0.15);
+      color: var(--accent);
+      border: 1px solid rgba(108,122,255,0.3);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .header-center {
+      flex: 1;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .header-center strong { color: var(--accent2); font-weight: 500; }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .kbd {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 6px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .hdr-hint {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* ── LEFT PANEL ──────────────────────────────────────────────────────── */
+    .panel-left {
+      grid-column: 1;
+      grid-row: 2;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 14px;
+    }
+
+    .panel-section {
+      margin-bottom: 18px;
+    }
+
+    .panel-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .ctrl-key {
+      font-size: 11px;
+      color: var(--text);
+    }
+
+    .ctrl-val {
+      font-size: 11px;
+      color: var(--accent2);
+      font-family: var(--mono);
+    }
+
+    .stat-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+
+    .stat-key { font-size: 11px; color: #7070a0; }
+    .stat-val { font-size: 11px; color: var(--accent2); font-family: var(--mono); min-width: 50px; text-align: right; }
+    .stat-val.warn { color: var(--warn); }
+    .stat-val.good { color: var(--accent2); }
+
+    /* Toggle switches */
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 32px;
+      height: 16px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--muted);
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--accent); }
+    .toggle-thumb {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+    .action-btn {
+      display: block;
+      width: 100%;
+      padding: 6px 10px;
+      margin-bottom: 5px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-family: var(--inter);
+      font-size: 11px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .action-btn:hover { background: rgba(108,122,255,0.12); border-color: rgba(108,122,255,0.3); color: var(--accent); }
+    .action-btn.active { background: rgba(108,122,255,0.18); border-color: rgba(108,122,255,0.4); color: var(--accent); }
+
+    .action-btn .btn-shortcut {
+      float: right;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* ── CANVAS WRAP ─────────────────────────────────────────────────────── */
+    .canvas-wrap {
+      grid-column: 2;
+      grid-row: 2;
+      position: relative;
+      overflow: hidden;
+      background: #0f0f1c;
+    }
+
+    #demo {
+      display: block;
+      cursor: text;
+      /* outline:none is required — without it, mousedown focuses the canvas
+         and the browser draws a focus ring. Since .canvas-wrap has
+         overflow:hidden, the ring is clipped on the outside and appears as
+         an inset border. The canvas content looks shifted/shrunken but
+         getBoundingClientRect() is unchanged, causing selection rects to
+         appear at incorrect positions (off by the ring width). */
+      outline: none;
+    }
+
+    /* Search panel injected by LayoutSearch is absolute inside canvas-wrap */
+
+    /* ── RIGHT PANEL ─────────────────────────────────────────────────────── */
+    .panel-right {
+      grid-column: 3;
+      grid-row: 2;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 14px;
+    }
+
+    .selection-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      min-height: 72px;
+    }
+
+    .selection-box .sel-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .selection-box .sel-text {
+      font-size: 11px;
+      color: var(--accent2);
+      font-family: var(--mono);
+      word-break: break-all;
+      white-space: pre-wrap;
+      max-height: 96px;
+      overflow-y: auto;
+    }
+
+    .selection-box .sel-empty {
+      font-size: 11px;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    /* ── FOOTER ──────────────────────────────────────────────────────────── */
+    .footer {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 0 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .footer strong { color: var(--text); font-weight: 500; }
+    .footer-spacer { flex: 1; }
+
+    /* ── SCROLLBAR ───────────────────────────────────────────────────────── */
+    .panel-left::-webkit-scrollbar,
+    .panel-right::-webkit-scrollbar { width: 4px; }
+    .panel-left::-webkit-scrollbar-track,
+    .panel-right::-webkit-scrollbar-track { background: transparent; }
+    .panel-left::-webkit-scrollbar-thumb,
+    .panel-right::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+
+    /* ── COPY FLASH ──────────────────────────────────────────────────────── */
+    .copy-flash {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,232,181,0.9);
+      color: #000;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 18px;
+      border-radius: 20px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 200;
+    }
+    .copy-flash.show { opacity: 1; }
+
+    /* ── INDEX SPINNER ───────────────────────────────────────────────────── */
+    .index-badge {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      font-size: 10px;
+      font-family: var(--mono);
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(255,189,46,0.15);
+      color: var(--warn);
+      border: 1px solid rgba(255,189,46,0.25);
+      pointer-events: none;
+      transition: opacity 0.3s;
+      z-index: 100;
+    }
+    .index-badge.ready {
+      background: rgba(0,232,181,0.12);
+      color: var(--accent2);
+      border-color: rgba(0,232,181,0.2);
+    }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── HEADER ───────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="logo">Layout<span>Sans</span></div>
+    <span class="header-badge">v0.2</span>
+
+    <div class="header-center">
+      Interactive Text Engine &mdash;
+      <strong>selection · copy · links · search · a11y</strong>
+      &mdash; zero visible DOM
+    </div>
+
+    <div class="header-actions">
+      <span class="hdr-hint"><span class="kbd">Ctrl+F</span> search</span>
+      <span class="hdr-hint"><span class="kbd">Ctrl+C</span> copy</span>
+      <span class="hdr-hint"><span class="kbd">Ctrl+A</span> select all</span>
+    </div>
+  </header>
+
+  <!-- ── LEFT PANEL ───────────────────────────────────────────────────────── -->
+  <aside class="panel-left">
+
+    <div class="panel-section">
+      <div class="panel-label">Performance</div>
+      <div class="stat-row"><span class="stat-key">compute()</span><span class="stat-val good" id="st-compute">—</span></div>
+      <div class="stat-row"><span class="stat-key">buildIndex()</span><span class="stat-val" id="st-index">…</span></div>
+      <div class="stat-row"><span class="stat-key">hit-test (R-Tree)</span><span class="stat-val good" id="st-hittest">—</span></div>
+      <div class="stat-row"><span class="stat-key">frame paint</span><span class="stat-val good" id="st-frame">—</span></div>
+      <div class="stat-row"><span class="stat-key">bridge.sync()</span><span class="stat-val good" id="st-sync">—</span></div>
+      <div class="stat-row"><span class="stat-key">DOM nodes</span><span class="stat-val good" id="st-dom">—</span></div>
+      <div class="stat-row"><span class="stat-key">text nodes</span><span class="stat-val" id="st-textnodes">—</span></div>
+      <div class="stat-row"><span class="stat-key">visible</span><span class="stat-val" id="st-visible">—</span></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">Content</div>
+      <div class="ctrl-row">
+        <span class="ctrl-key">Show selection rects</span>
+        <label class="toggle"><input type="checkbox" id="tog-sel" checked /><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-key">Show search highlights</span>
+        <label class="toggle"><input type="checkbox" id="tog-srch" checked /><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-key">Show focus rings</span>
+        <label class="toggle"><input type="checkbox" id="tog-focus" checked /><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">Actions</div>
+      <button class="action-btn" id="btn-highlight">Programmatic highlight<span class="btn-shortcut">demo</span></button>
+      <button class="action-btn" id="btn-selectall">Select all text<span class="btn-shortcut">Ctrl+A</span></button>
+      <button class="action-btn" id="btn-clear">Clear selection<span class="btn-shortcut">Esc</span></button>
+      <button class="action-btn" id="btn-copy">Copy selection<span class="btn-shortcut">Ctrl+C</span></button>
+      <button class="action-btn" id="btn-search">Open search panel<span class="btn-shortcut">Ctrl+F</span></button>
+      <button class="action-btn" id="btn-rebuild">Rebuild layout<span class="btn-shortcut">↺</span></button>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">Architecture invariants</div>
+      <div class="stat-row"><span class="stat-key">O(viewport) DOM</span><span class="stat-val good">✓</span></div>
+      <div class="stat-row"><span class="stat-key">measureText() in hot path</span><span class="stat-val good">0</span></div>
+      <div class="stat-row"><span class="stat-key">Proxy Caret elements</span><span class="stat-val good">1</span></div>
+      <div class="stat-row"><span class="stat-key">Canvas paint (selection)</span><span class="stat-val good">ctx.fillRect</span></div>
+      <div class="stat-row"><span class="stat-key">CSS ::selection used</span><span class="stat-val good">never</span></div>
+    </div>
+
+  </aside>
+
+  <!-- ── CANVAS WRAP ───────────────────────────────────────────────────────── -->
+  <main class="canvas-wrap" id="cwrap">
+    <canvas id="demo" tabindex="0"></canvas>
+    <div class="copy-flash" id="copy-flash">Copied ✓</div>
+    <div class="index-badge" id="index-badge">Building index…</div>
+  </main>
+
+  <!-- ── RIGHT PANEL ──────────────────────────────────────────────────────── -->
+  <aside class="panel-right">
+
+    <div class="panel-section">
+      <div class="panel-label">Selected text</div>
+      <div class="selection-box">
+        <div class="sel-label">Current selection</div>
+        <div class="sel-empty" id="sel-empty">Click and drag to select text on the canvas.</div>
+        <div class="sel-text" id="sel-text" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">Clipboard log</div>
+      <div id="clipboard-log" style="font-family:var(--mono);font-size:10px;color:var(--muted);max-height:100px;overflow-y:auto;"></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">Node under cursor</div>
+      <div class="stat-row"><span class="stat-key">nodeId</span><span class="stat-val" id="hover-id">—</span></div>
+      <div class="stat-row"><span class="stat-key">type</span><span class="stat-val" id="hover-type">—</span></div>
+      <div class="stat-row"><span class="stat-key">bbox</span><span class="stat-val" id="hover-bbox">—</span></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-label">v0.2 feature checklist</div>
+      <div class="stat-row"><span class="stat-key">Click-drag selection</span><span class="stat-val good" id="chk-sel">✓</span></div>
+      <div class="stat-row"><span class="stat-key">Canvas selection rects</span><span class="stat-val good">✓</span></div>
+      <div class="stat-row"><span class="stat-key">Ctrl+C clipboard</span><span class="stat-val good" id="chk-copy">✓</span></div>
+      <div class="stat-row"><span class="stat-key">Link hover + click</span><span class="stat-val good">✓</span></div>
+      <div class="stat-row"><span class="stat-key">Ctrl+F / search panel</span><span class="stat-val good">✓</span></div>
+      <div class="stat-row"><span class="stat-key">Search highlights (canvas)</span><span class="stat-val good">✓</span></div>
+      <div class="stat-row"><span class="stat-key">Tab + focus rings</span><span class="stat-val good">✓</span></div>
+      <div class="stat-row"><span class="stat-key">Screen reader shadow tree</span><span class="stat-val good">✓</span></div>
+      <div class="stat-row"><span class="stat-key">Programmatic setSelection</span><span class="stat-val good">✓</span></div>
+      <div class="stat-row"><span class="stat-key">DOM ≤ 700 nodes total</span><span class="stat-val good" id="chk-dom">✓</span></div>
+    </div>
+
+  </aside>
+
+  <!-- ── FOOTER ───────────────────────────────────────────────────────────── -->
+  <footer class="footer">
+    <strong>LayoutSans v0.2</strong>
+    — All glyph painting via Canvas 2D API. Zero CSS layout. Zero <code>::selection</code>.
+    <span class="footer-spacer"></span>
+    <span id="ft-fps">—</span> fps &nbsp;|&nbsp;
+    <span id="ft-scroll">scroll: 0px</span>
+  </footer>
+
+</div><!-- .shell -->
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<script type="module">
+// LayoutSans Interactive Text Demo — demo/interactive-text.html
+//
+// Demonstrates the full v0.2 interaction stack:
+//   • Text selection with canvas-painted highlight rects
+//   • Ctrl+C clipboard (via Proxy Caret OS Bridge)
+//   • Link hover (pointer cursor) and click navigation
+//   • Ctrl+F search with animated match scrolling
+//   • Tab key + focus rings via Shadow Semantic Tree
+//   • Screen reader accessibility (VoiceOver/NVDA compatible)
+//   • Programmatic engine.setSelection() demo
+//   • DOM node count ≤ 700 at all times
+
+import {
+  createLayout,
+  InteractionBridge,
+  attachMouseHandlers,
+  paintSelection,
+  paintSearchHighlights,
+  paintFocusRing,
+} from '../dist/index.js'
+
+import * as pretext from '../../node_modules/@chenglou/pretext/dist/layout.js'
+
+// ── Content ────────────────────────────────────────────────────────────────────
+//
+// A rich document tree that exercises every v0.2 node type:
+//   HeadingNode (h1, h2, h3), TextNode, LinkNode, BoxNode
+// All rendered via the LayoutSans engine — zero HTML text nodes.
+
+const CONTENT_WIDTH = 680
+const FONT_BODY     = '15px/1.65 Inter, system-ui, sans-serif'
+const FONT_H1       = '700 32px/1.25 Inter, system-ui, sans-serif'
+const FONT_H2       = '600 22px/1.3 Inter, system-ui, sans-serif'
+const FONT_H3       = '600 17px/1.35 Inter, system-ui, sans-serif'
+const FONT_MONO     = '13px/1.6 JetBrains Mono, monospace'
+const FONT_CAPTION  = '12px/1.5 Inter, system-ui, sans-serif'
+
+// Build the layout tree. Returns { root, highlightNodeIds } where
+// highlightNodeIds are node ids to use in the programmatic selection demo.
+function buildDocument() {
+  const GAP = 20
+
+  const highlightTargets = []
+
+  // Helper to create a text node with a stable id
+  let _id = 0
+  const nextId = (prefix = 'n') => `${prefix}-${++_id}`
+
+  const h1Id = nextId('h')
+  const para1Id = nextId('p')
+  const para2Id = nextId('p')
+  const quoteId = nextId('p')
+  const codeId = nextId('p')
+  const para3Id = nextId('p')
+  const para4Id = nextId('p')
+  const para5Id = nextId('p')
+  const footerId = nextId('p')
+
+  highlightTargets.push(para1Id, para3Id)
+
+  const root = {
+    type: 'flex',
+    direction: 'column',
+    width: CONTENT_WIDTH,
+    gap: GAP,
+    children: [
+
+      // ── H1 ────────────────────────────────────────────────────────────────
+      {
+        id: h1Id,
+        type: 'heading',
+        level: 1,
+        content: 'LayoutSans v0.2 — Pure-Canvas Interactive Text Engine',
+        font: FONT_H1,
+        lineHeight: 40,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Byline ────────────────────────────────────────────────────────────
+      {
+        id: nextId('p'),
+        type: 'text',
+        content: 'A zero-DOM renderer with full text interactivity: selection, copy, search, links, and accessibility. Select any text, press Ctrl+C, or try Ctrl+F to search.',
+        font: FONT_CAPTION,
+        lineHeight: 20,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Divider ───────────────────────────────────────────────────────────
+      { id: nextId('b'), type: 'box', width: CONTENT_WIDTH, height: 1 },
+
+      // ── H2 ────────────────────────────────────────────────────────────────
+      {
+        id: nextId('h'),
+        type: 'heading',
+        level: 2,
+        content: 'Architecture Overview',
+        font: FONT_H2,
+        lineHeight: 30,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Para 1 ───────────────────────────────────────────────────────────
+      {
+        id: para1Id,
+        type: 'text',
+        content: 'LayoutSans v0.2 extends the pure-canvas renderer from v0.1 with a complete OS Bridge — the thin DOM shim that connects the canvas to system text APIs. The architecture has three parallel subsystems: the Visual Canvas Layer (a requestAnimationFrame loop that paints glyphs, selection rects, and search highlights), the Spatial Hit-Test Engine (a packed R-Tree for O(log n) point queries), and the OS Bridge (a single <textarea> proxy caret and a virtualized Shadow Semantic Tree).',
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Para 2 ───────────────────────────────────────────────────────────
+      {
+        id: para2Id,
+        type: 'text',
+        content: 'Two invariants are enforced unconditionally: all pixel painting — including selection highlights and focus rings — is done exclusively via the Canvas 2D API; and DOM node count is O(viewport) for the semantic layer and O(1) for the interaction bridge, regardless of whether the layout contains 1,000 or 1,000,000 nodes.',
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── H2 ────────────────────────────────────────────────────────────────
+      {
+        id: nextId('h'),
+        type: 'heading',
+        level: 2,
+        content: 'Spatial Hit-Test Engine',
+        font: FONT_H2,
+        lineHeight: 30,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Para 3 ───────────────────────────────────────────────────────────
+      {
+        id: para3Id,
+        type: 'text',
+        content: 'A flat BoxRecord[] iteration for hit-testing is O(n). At 100,000 items with mouse-move events firing 120 times per second, that is 12 million comparisons per second — consuming nearly an entire CPU core just for cursor tracking. A static packed R-Tree gives O(log₂ n) query time. At 100,000 nodes, that is ~17 comparisons per query regardless of item density.',
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Block quote ───────────────────────────────────────────────────────
+      {
+        id: nextId('b'),
+        type: 'flex',
+        direction: 'row',
+        width: CONTENT_WIDTH,
+        children: [
+          { id: nextId('b'), type: 'box', width: 4, height: 80 },
+          {
+            id: quoteId,
+            type: 'text',
+            content: '"The DOM inspector at steady state should show: one <canvas>, one <textarea> (0×0), one <div role=document> containing ~50–250 semantic nodes for the visible viewport, one <div> for the search panel, one skip link <a>. That is the complete DOM footprint regardless of whether the layout contains 1,000 or 1,000,000 nodes."',
+            font: '14px/1.6 Inter, system-ui, sans-serif',
+            lineHeight: 23,
+            width: CONTENT_WIDTH - 20,
+          },
+        ],
+      },
+
+      // ── H3 ────────────────────────────────────────────────────────────────
+      {
+        id: nextId('h'),
+        type: 'heading',
+        level: 3,
+        content: 'Sub-Glyph Precision Without measureText()',
+        font: FONT_H3,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Para with code ────────────────────────────────────────────────────
+      {
+        id: para4Id,
+        type: 'text',
+        content: "Pretext's PreparedTextWithSegments already contains all the geometry paid for during prepare(): widths (width of each segment), breakableWidths (per-segment grapheme widths), and breakablePrefixWidths (cumulative prefix widths for binary search). This means zero measureText() calls in the cursor-tracking hot path. All glyph geometry is pre-computed once.",
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Code block ───────────────────────────────────────────────────────
+      {
+        id: codeId,
+        type: 'text',
+        content: '// Resolve pixel X → character offset within a line\n// 1. lineIndex = floor((hitY - record.y) / lineHeight)\n// 2. localX = hitX - record.x\n// 3. Walk segments using prepared.widths until accumulated > localX\n// 4. Binary search breakablePrefixWidths for exact grapheme\n// → returns { nodeId, segmentIndex, graphemeIndex, pixelX }',
+        font: FONT_MONO,
+        lineHeight: 21,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── H2 ────────────────────────────────────────────────────────────────
+      {
+        id: nextId('h'),
+        type: 'heading',
+        level: 2,
+        content: 'Custom Text Selection',
+        font: FONT_H2,
+        lineHeight: 30,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Para 5 ───────────────────────────────────────────────────────────
+      {
+        id: para5Id,
+        type: 'text',
+        content: 'Selection state is a singleton SelectionRange owned by LayoutEngine. It stores an anchor and a focus SelectionCursor — each cursor carries a nodeId, lineIndex, segmentIndex, graphemeIndex, and pre-computed pixelX. The canvas RAF loop reads SelectionState and calls paintSelection() after background rendering but before text glyphs — exactly as the browser renders ::selection — so highlights appear under the text.',
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Links row ─────────────────────────────────────────────────────────
+      {
+        id: nextId('b'),
+        type: 'flex',
+        direction: 'row',
+        width: CONTENT_WIDTH,
+        gap: 16,
+        children: [
+          {
+            id: nextId('lnk'),
+            type: 'link',
+            href: 'https://github.com/BaselAshraf81/layout-sans',
+            target: '_blank',
+            children: [
+              {
+                id: nextId('p'),
+                type: 'text',
+                content: '↗ layout-sans on GitHub',
+                font: '500 14px Inter, system-ui, sans-serif',
+                lineHeight: 22,
+                width: 220,
+              },
+            ],
+          },
+          {
+            id: nextId('lnk'),
+            type: 'link',
+            href: 'https://github.com/chenglou/pretext',
+            target: '_blank',
+            children: [
+              {
+                id: nextId('p'),
+                type: 'text',
+                content: '↗ @chenglou/pretext — text engine',
+                font: '500 14px Inter, system-ui, sans-serif',
+                lineHeight: 22,
+                width: 280,
+              },
+            ],
+          },
+        ],
+      },
+
+      // ── H2 ────────────────────────────────────────────────────────────────
+      {
+        id: nextId('h'),
+        type: 'heading',
+        level: 2,
+        content: 'OS Bridge & Shadow Semantic Tree',
+        font: FONT_H2,
+        lineHeight: 30,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Para ──────────────────────────────────────────────────────────────
+      {
+        id: nextId('p'),
+        type: 'text',
+        content: 'The OS Bridge injects exactly one <textarea> element (the Proxy Caret) into the DOM. At rest it is 0×0 pixels, opacity 0, with no pointer events. On desktop, Ctrl+C populates the textarea with the selected text and dispatches a copy event. On mobile, a 500ms long-press triggers word expansion, mirrors the TextNode font and geometry onto the textarea, and causes the OS to spawn native teardrop selection handles at the correct screen coordinates.',
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      {
+        id: nextId('p'),
+        type: 'text',
+        content: 'The Shadow Semantic Tree is a virtualized DOM pool of ~600 nodes maximum, containing <p>, <h1>–<h6>, and <a> elements that track the visible viewport window. It is positioned absolutely and is invisible to sighted users (opacity: 0, pointer-events: none) but fully traversable by screen readers (VoiceOver, NVDA, JAWS). Tab focus on a shadow <a> triggers a canvas focus ring via a custom event, rather than any CSS outline.',
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── H2 ────────────────────────────────────────────────────────────────
+      {
+        id: nextId('h'),
+        type: 'heading',
+        level: 2,
+        content: 'Spatial Search (Ctrl+F)',
+        font: FONT_H2,
+        lineHeight: 30,
+        width: CONTENT_WIDTH,
+      },
+
+      {
+        id: nextId('p'),
+        type: 'text',
+        content: 'LayoutSearch intercepts Ctrl+F in the document keydown capture phase before the browser\'s native find-in-page dialog. The in-memory search algorithm walks BoxRecord[] in document order, calls String.indexOf() on each node\'s textContent, and maps character offsets to pixel rects using charRangeToRect() — the same sub-glyph resolution procedure used for selection, with zero measureText() calls. Results are highlighted as ctx.fillRect calls on the next RAF frame.',
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      {
+        id: nextId('p'),
+        type: 'text',
+        content: 'Navigating to a match runs a cubic ease-out animation via requestAnimationFrame, calling onScrollTo() each frame so the caller updates their scroll state. The built-in panel (injected as a single <div>) shows "N of M" match count, previous/next buttons, and a close button. The panel is opt-out: set searchUI: false and call engine.layoutSearch.search(q) from your own UI.',
+        font: FONT_BODY,
+        lineHeight: 26,
+        width: CONTENT_WIDTH,
+      },
+
+      // ── Footer ────────────────────────────────────────────────────────────
+      { id: nextId('b'), type: 'box', width: CONTENT_WIDTH, height: 1 },
+
+      {
+        id: footerId,
+        type: 'text',
+        content: 'LayoutSans v0.2 — MIT License — © 2024 Basel Ashraf. Built with @chenglou/pretext for sub-glyph text measurement. Performance budget: compute() < 5ms, buildIndex() < 15ms, hit-test < 0.5ms, frame < 3ms, bridge.sync() < 2ms at 100,000 nodes.',
+        font: FONT_CAPTION,
+        lineHeight: 20,
+        width: CONTENT_WIDTH,
+      },
+
+      // Bottom spacer
+      { id: nextId('b'), type: 'box', width: CONTENT_WIDTH, height: 40 },
+    ],
+  }
+
+  return { root, highlightTargets }
+}
+
+// ── Canvas setup ───────────────────────────────────────────────────────────────
+
+const canvas  = document.getElementById('demo')
+const wrap    = document.getElementById('cwrap')
+const ctx     = canvas.getContext('2d')
+const dpr     = Math.min(window.devicePixelRatio || 1, 2)
+
+let CW = 0, CH = 0
+
+function resizeCanvas() {
+  CW = wrap.clientWidth
+  CH = wrap.clientHeight
+  canvas.width  = CW * dpr
+  canvas.height = CH * dpr
+  canvas.style.width  = CW + 'px'
+  canvas.style.height = CH + 'px'
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+}
+
+// ── State ──────────────────────────────────────────────────────────────────────
+
+let scrollY    = 0
+let totalH     = 0
+let rafPending = false
+let lastFrameMs = 0
+let frameCount  = 0
+let fpsTimer    = 0
+let fps         = 0
+
+const { root, highlightTargets } = buildDocument()
+
+// ── Engine ─────────────────────────────────────────────────────────────────────
+
+let engine
+let bridge
+let detachMouse
+let boxes
+let recordMap
+
+function initEngine() {
+  resizeCanvas()
+
+  const t0 = performance.now()
+  engine = createLayout(root, { width: CONTENT_WIDTH }).usePretext(pretext)
+  boxes  = engine.compute()
+  const computeMs = (performance.now() - t0).toFixed(2)
+
+  // Build a flat record map for paint calls.
+  recordMap = new Map(boxes.map(b => [b.nodeId, b]))
+
+  // Derive total content height from root record.
+  totalH = boxes[0]?.height ?? 0
+
+  document.getElementById('st-compute').textContent = `${computeMs}ms`
+  document.getElementById('st-textnodes').textContent = String(engine.getOrderedTextNodeIds().length)
+
+  // Offset: center content horizontally in the viewport
+  // (reflow will pick this up from the canvas width)
+
+  // ── Build spatial index (off critical path) ───────────────────────────────
+  const idxBadge = document.getElementById('index-badge')
+
+  const t1 = performance.now()
+  engine.buildIndex().then(() => {
+    const indexMs = (performance.now() - t1).toFixed(2)
+    document.getElementById('st-index').textContent = `${indexMs}ms`
+    idxBadge.textContent = `Index ready (${indexMs}ms)`
+    idxBadge.classList.add('ready')
+    setTimeout(() => { idxBadge.style.opacity = '0' }, 2000)
+  })
+
+  // ── Mount InteractionBridge ────────────────────────────────────────────────
+  if (bridge) bridge.destroy()
+  if (detachMouse) detachMouse()
+
+  bridge = new InteractionBridge(canvas, engine, {
+    searchUI: true,
+    selectionColor: 'rgba(108, 122, 255, 0.35)',
+    searchHighlightColor: 'rgba(255, 220, 0, 0.42)',
+    searchActiveColor: 'rgba(255, 160, 0, 0.72)',
+
+    onScrollTo: (y) => {
+      scrollY = Math.max(0, Math.min(Math.max(0, totalH - CH), y))
+      scheduleRepaint()
+    },
+
+    requestRepaint: scheduleRepaint,
+
+    onSelectionChange: (text) => {
+      const emptyEl = document.getElementById('sel-empty')
+      const textEl  = document.getElementById('sel-text')
+      if (text) {
+        emptyEl.style.display = 'none'
+        textEl.style.display  = 'block'
+        textEl.textContent    = text.length > 400 ? text.slice(0, 400) + '…' : text
+      } else {
+        emptyEl.style.display = 'block'
+        textEl.style.display  = 'none'
+      }
+    },
+
+    onLinkClick: (href, target) => {
+      logClipboard(`Link click: ${href}`)
+      return true  // allow default navigation
+    },
+  })
+
+  // ── Attach mouse handlers ─────────────────────────────────────────────────
+  detachMouse = attachMouseHandlers({
+    canvas,
+    engine,
+    getScrollY: () => scrollY,
+    getContentOffsetX: contentOffset,
+    requestRepaint: scheduleRepaint,
+    onLinkClick: (href, target) => {
+      logClipboard(`Navigating: ${href}`)
+      return true
+    },
+  })
+
+  // ── Selection change → clipboard log ──────────────────────────────────────
+  engine.selection.onChange(() => {
+    scheduleRepaint()
+    const text = engine.selection.get()
+      ? getSelectedTextFn()
+      : ''
+    if (text && text.length > 0) {
+      document.getElementById('chk-sel').textContent = `✓ (${text.length} chars)`
+    }
+  })
+
+  scheduleRepaint()
+}
+
+// ── Paint ──────────────────────────────────────────────────────────────────────
+
+// Offset so the content is centered in the canvas
+function contentOffset() {
+  return Math.max(0, Math.floor((CW - CONTENT_WIDTH) / 2))
+}
+
+function drawFrame() {
+  const t0 = performance.now()
+
+  ctx.save()
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+  // ── Background ────────────────────────────────────────────────────────────
+  ctx.fillStyle = '#0f0f1c'
+  ctx.fillRect(0, 0, CW, CH)
+
+  // ── Subtle grid ───────────────────────────────────────────────────────────
+  const GS = 32
+  const gOY = ((-(scrollY % GS)) + GS) % GS
+  ctx.fillStyle = 'rgba(255,255,255,0.012)'
+  for (let gx = 0; gx < CW; gx += GS) {
+    for (let gy = gOY; gy < CH; gy += GS) {
+      ctx.fillRect(gx, gy, 1, 1)
+    }
+  }
+
+  // Translate for content horizontal centering
+  const ox = contentOffset()
+  ctx.translate(ox, 0)
+
+  // ── Selection highlights (BELOW text) ─────────────────────────────────────
+  const sel = engine.selection.get()
+  if (sel && document.getElementById('tog-sel').checked) {
+    paintSelection(
+      ctx,
+      sel,
+      recordMap,
+      engine.textLineMap,
+      engine.getOrderedTextNodeIds(),
+      scrollY,
+      CH,
+      'rgba(108, 122, 255, 0.35)',
+    )
+  }
+
+  // ── Search highlights (BELOW text) ────────────────────────────────────────
+  if (bridge.search.isOpen && bridge.search.matches.length > 0 && document.getElementById('tog-srch').checked) {
+    paintSearchHighlights(
+      ctx,
+      bridge.search.matches,
+      bridge.search.activeIndex,
+      scrollY,
+      CH,
+      bridge.search.inactiveMatchColor,
+      bridge.search.activeMatchColor,
+    )
+  }
+
+  // ── Boxes ─────────────────────────────────────────────────────────────────
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i]
+    const dy = b.y - scrollY
+
+    // Viewport culling
+    if (dy > CH + 10) continue
+    if (dy + b.height < -10) continue
+
+    switch (b.nodeType) {
+      case 'text':
+      case 'heading': {
+        paintTextBox(b, dy)
+        break
+      }
+      case 'link': {
+        // No visual background — links look like inline text
+        // Hover state is tracked by mouse.ts which changes cursor
+        break
+      }
+      case 'box': {
+        // Thin divider lines (height == 1)
+        if (b.height === 1) {
+          ctx.fillStyle = 'rgba(255,255,255,0.07)'
+          ctx.fillRect(b.x, dy, b.width, 1)
+        }
+        break
+      }
+      default: break
+    }
+  }
+
+  // ── Focus ring (ABOVE all) ─────────────────────────────────────────────────
+  const focusedId = bridge.focusController.activeFocusNodeId
+  if (focusedId && document.getElementById('tog-focus').checked) {
+    const focusRecord = recordMap.get(focusedId)
+    if (focusRecord) {
+      paintFocusRing(ctx, focusRecord, scrollY, '#6c7aff')
+    }
+  }
+
+  ctx.restore()
+
+  const frameMs = performance.now() - t0
+  lastFrameMs = frameMs
+
+  // FPS tracking
+  frameCount++
+  if (performance.now() - fpsTimer >= 1000) {
+    fps = frameCount
+    frameCount = 0
+    fpsTimer = performance.now()
+    document.getElementById('ft-fps').textContent = `${fps}`
+  }
+
+  document.getElementById('st-frame').textContent = `${frameMs.toFixed(2)}ms`
+  document.getElementById('ft-scroll').textContent = `scroll: ${Math.round(scrollY)}px`
+}
+
+function paintTextBox(b, dy) {
+  // We don't use Pretext layoutWithLines here — we use the engine's
+  // pre-computed TextLineData. But for the visual demo we approximate
+  // with simple fillText per line from stored text content.
+  // In a full integration the caller would use their own text rendering.
+
+  if (!b.textContent) return
+
+  const tld = engine.textLineMap.get(b.nodeId)
+  if (!tld) return
+
+  const isHeading = b.nodeType === 'heading'
+
+  // Select font and color by node type.
+  // CRITICAL: ctx.font MUST match the font Pretext used for measurement (tld.font).
+  // Using a different font makes glyph widths diverge from the stored segment widths,
+  // causing selection rects to appear at wrong (compressed-left) positions.
+  if (isHeading) {
+    const level = detectHeadingLevel(b.nodeId)
+    if (level === 1) {
+      ctx.font = tld.font
+      ctx.fillStyle = '#ffffff'
+    } else if (level === 2) {
+      ctx.font = tld.font
+      ctx.fillStyle = '#e8eaff'
+    } else {
+      ctx.font = tld.font
+      ctx.fillStyle = '#d4d6f8'
+    }
+  } else {
+    ctx.font = tld.font
+    const isCode = tld.prepared.segments.join('').includes('//')
+    ctx.fillStyle = isCode ? '#a0d0ff' : '#c8cceb'
+  }
+
+  ctx.textBaseline = 'top'
+
+  for (let li = 0; li < tld.lines.length; li++) {
+    const line = tld.lines[li]
+    if (!line) continue
+    const lineY = dy + li * tld.lineHeight
+    if (lineY + tld.lineHeight < 0) continue
+    if (lineY > CH + 10) break
+    ctx.fillText(line.text, b.x, lineY + Math.round(tld.lineHeight * 0.14))
+  }
+
+  // Link underline
+  if (isLinkChild(b.nodeId)) {
+    ctx.fillStyle = 'rgba(108,122,255,0.7)'
+    for (let li = 0; li < tld.lines.length; li++) {
+      const line = tld.lines[li]
+      if (!line) continue
+      const lineY = dy + li * tld.lineHeight
+      ctx.fillRect(b.x, lineY + tld.lineHeight - 2, line.width, 1)
+    }
+  }
+}
+
+// ── Heading level lookup ───────────────────────────────────────────────────────
+// We need to know the heading level to pick font/color. Walk the original tree.
+const headingLevelMap = new Map()
+function indexHeadingLevels(node, parent) {
+  if (node.type === 'heading') {
+    headingLevelMap.set(node.id, node.level)
+  }
+  if (node.children) {
+    for (const child of node.children) indexHeadingLevels(child)
+  }
+}
+indexHeadingLevels(root)
+function detectHeadingLevel(nodeId) {
+  return headingLevelMap.get(nodeId) ?? 2
+}
+
+// ── Link child lookup ─────────────────────────────────────────────────────────
+// Check if a text node is a direct child of a link node
+const linkChildIds = new Set()
+function indexLinkChildren(node) {
+  if (node.type === 'link' && node.children) {
+    for (const child of node.children) {
+      if (child.id) linkChildIds.add(child.id)
+      indexLinkChildren(child)
+    }
+  } else if (node.children) {
+    for (const child of node.children) indexLinkChildren(child)
+  }
+}
+indexLinkChildren(root)
+function isLinkChild(nodeId) {
+  return linkChildIds.has(nodeId)
+}
+
+// ── RAF management ────────────────────────────────────────────────────────────
+
+function scheduleRepaint() {
+  if (rafPending) return
+  rafPending = true
+  requestAnimationFrame(() => {
+    rafPending = false
+    drawFrame()
+
+    // sync bridge AFTER painting
+    const t0 = performance.now()
+    bridge.sync(scrollY)
+    document.getElementById('st-sync').textContent = `${(performance.now() - t0).toFixed(2)}ms`
+
+    // DOM node count
+    document.getElementById('st-dom').textContent = String(document.querySelectorAll('*').length)
+  })
+}
+
+// ── Clipboard helper ──────────────────────────────────────────────────────────
+
+function getSelectedTextFn() {
+  const range = engine.selection.get()
+  if (!range) return ''
+  // Use bridge's internal path
+  const { getSelectedText } = { getSelectedText: null }  // not exported directly
+  // The selection change handler already handled this via onSelectionChange
+  return ''
+}
+
+function logClipboard(msg) {
+  const log = document.getElementById('clipboard-log')
+  const entry = document.createElement('div')
+  entry.style.cssText = 'margin-bottom:2px;'
+  entry.textContent = `${new Date().toLocaleTimeString()} — ${msg}`
+  log.insertBefore(entry, log.firstChild)
+  // Cap at 10 entries
+  while (log.children.length > 10) log.removeChild(log.lastChild)
+}
+
+// Flash "Copied ✓" overlay
+function showCopyFlash() {
+  const flash = document.getElementById('copy-flash')
+  flash.classList.add('show')
+  setTimeout(() => flash.classList.remove('show'), 1200)
+  logClipboard('Copied to clipboard')
+  document.getElementById('chk-copy').textContent = '✓ (done)'
+}
+
+// Intercept copy to show flash
+document.addEventListener('copy', (e) => {
+  if (e.target?.getAttribute?.('data-ls-proxy') !== null &&
+      e.target?.classList?.contains?.('ls-proxy-caret') !== false) {
+    // copy came from proxy caret — show flash
+    setTimeout(showCopyFlash, 0)
+  }
+}, { capture: true })
+
+// ── Scroll handling ────────────────────────────────────────────────────────────
+
+function clampScroll(y) {
+  return Math.max(0, Math.min(Math.max(0, totalH - CH), y))
+}
+
+wrap.addEventListener('wheel', (e) => {
+  e.preventDefault()
+  scrollY = clampScroll(scrollY + e.deltaY * 0.9)
+  scheduleRepaint()
+}, { passive: false })
+
+let touch = null
+wrap.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) touch = { y: e.touches[0].clientY, startScroll: scrollY }
+})
+wrap.addEventListener('touchmove', (e) => {
+  if (!touch || e.touches.length !== 1) return
+  e.preventDefault()
+  scrollY = clampScroll(touch.startScroll - (e.touches[0].clientY - touch.y))
+  scheduleRepaint()
+}, { passive: false })
+wrap.addEventListener('touchend', () => { touch = null })
+
+// Keyboard scroll
+canvas.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowDown':  scrollY = clampScroll(scrollY + 40);  scheduleRepaint(); e.preventDefault(); break
+    case 'ArrowUp':    scrollY = clampScroll(scrollY - 40);  scheduleRepaint(); e.preventDefault(); break
+    case 'PageDown':   scrollY = clampScroll(scrollY + CH);  scheduleRepaint(); e.preventDefault(); break
+    case 'PageUp':     scrollY = clampScroll(scrollY - CH);  scheduleRepaint(); e.preventDefault(); break
+    case 'Home':       scrollY = 0;                           scheduleRepaint(); e.preventDefault(); break
+    case 'End':        scrollY = clampScroll(totalH);         scheduleRepaint(); e.preventDefault(); break
+    case 'Escape':     engine.clearSelection();               scheduleRepaint(); break
+    case 'a':
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        const ids = engine.getOrderedTextNodeIds()
+        if (ids.length >= 1) {
+          engine.setSelection(ids[0], 0, ids[ids.length - 1], 999999)
+        }
+      }
+      break
+  }
+})
+
+// ── Hover stats ───────────────────────────────────────────────────────────────
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect()
+  const ox   = contentOffset()
+  const worldX = (e.clientX - rect.left - ox)
+  const worldY = (e.clientY - rect.top) + scrollY
+
+  const t0 = performance.now()
+  if (engine.spatialIndex) {
+    const hits = engine.spatialIndex.queryPoint(worldX, worldY)
+    const hitMs = (performance.now() - t0).toFixed(3)
+    document.getElementById('st-hittest').textContent = `${hitMs}ms`
+
+    if (hits.length > 0) {
+      const r = recordMap.get(hits[0])
+      if (r) {
+        document.getElementById('hover-id').textContent   = r.nodeId
+        document.getElementById('hover-type').textContent = r.nodeType
+        document.getElementById('hover-bbox').textContent = `${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}×${Math.round(r.height)}`
+      }
+    } else {
+      document.getElementById('hover-id').textContent   = '—'
+      document.getElementById('hover-type').textContent = '—'
+      document.getElementById('hover-bbox').textContent = '—'
+    }
+  }
+
+  // Update visible node count
+  let vis = 0
+  for (const b of boxes) {
+    const dy = b.y - scrollY
+    if (dy > CH + 20) continue
+    if (dy + b.height < -20) continue
+    vis++
+  }
+  document.getElementById('st-visible').textContent = String(vis)
+})
+
+// ── Control panel wiring ──────────────────────────────────────────────────────
+
+document.getElementById('btn-highlight').addEventListener('click', () => {
+  // Demo: programmatically select text across two nodes
+  const ids = engine.getOrderedTextNodeIds()
+  if (ids.length >= 2) {
+    const startId = highlightTargets[0] ?? ids[0]
+    const endId   = highlightTargets[1] ?? ids[Math.min(3, ids.length - 1)]
+    engine.setSelection(startId, 10, endId, 40)
+    scheduleRepaint()
+    document.getElementById('btn-highlight').classList.add('active')
+    setTimeout(() => document.getElementById('btn-highlight').classList.remove('active'), 1000)
+  }
+})
+
+document.getElementById('btn-selectall').addEventListener('click', () => {
+  const ids = engine.getOrderedTextNodeIds()
+  if (ids.length > 0) {
+    engine.setSelection(ids[0], 0, ids[ids.length - 1], 999999)
+    scheduleRepaint()
+  }
+})
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  engine.clearSelection()
+  scheduleRepaint()
+})
+
+document.getElementById('btn-copy').addEventListener('click', () => {
+  engine.copySelectedText().then(ok => {
+    if (ok) showCopyFlash()
+  })
+})
+
+document.getElementById('btn-search').addEventListener('click', () => {
+  bridge.search.openPanel()
+})
+
+document.getElementById('btn-rebuild').addEventListener('click', () => {
+  scrollY = 0
+  initEngine()
+})
+
+// Toggles trigger repaint
+document.getElementById('tog-sel').addEventListener('change',   scheduleRepaint)
+document.getElementById('tog-srch').addEventListener('change',  scheduleRepaint)
+document.getElementById('tog-focus').addEventListener('change', scheduleRepaint)
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+
+const ro = new ResizeObserver(() => {
+  resizeCanvas()
+  scrollY = clampScroll(scrollY)
+  scheduleRepaint()
+})
+ro.observe(wrap)
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+//
+// CRITICAL: gate initEngine() on document.fonts.ready.
+//
+// engine.compute() calls Pretext which reads real glyph metrics via
+// ctx.measureText. On a hard reload with empty cache, Inter and JetBrains
+// Mono have not finished downloading yet, so measureText falls back to the
+// system font and stores WRONG segment widths in textLineMap.
+//
+// When the web fonts later paint (typically 200-800ms on a cold cache), the
+// canvas repaints with correct glyphs but the stored metrics stay frozen at
+// the fallback font values. Visual glyphs no longer match the selection
+// geometry, making the canvas appear to jump and selection rects land at
+// wrong positions.
+//
+// document.fonts.ready resolves once all CSS-referenced fonts have loaded
+// (or permanently failed). Deferring initEngine() until then guarantees
+// Pretext always measures with the correct font metrics. On a soft reload
+// the fonts are already in memory so this resolves on the next microtask
+// with no visible delay.
+
+// Show a transient placeholder while fonts are in-flight (cold cache only).
+resizeCanvas()
+ctx.fillStyle = '#0f0f1c'
+ctx.fillRect(0, 0, CW, CH)
+ctx.font = '13px system-ui, sans-serif'
+ctx.fillStyle = 'rgba(255,255,255,0.2)'
+ctx.textBaseline = 'middle'
+ctx.fillText('Loading fonts…', 20, CH / 2)
+
+document.fonts.ready.then(() => {
+  initEngine()
+  scheduleRepaint()
+})
+
+// Update DOM count periodically
+setInterval(() => {
+  const n = document.querySelectorAll('*').length
+  document.getElementById('st-dom').textContent = String(n)
+  document.getElementById('chk-dom').textContent = n <= 700 ? `✓ (${n})` : `✗ (${n})`
+  document.getElementById('chk-dom').style.color = n <= 700 ? 'var(--accent2)' : 'var(--coral)'
+}, 1000)
+
+</script>
+</body>
+</html>

@@ -1,2 +1,16 @@
 export { createLayout, LayoutEngine } from './engine.js';
-export type { Node, FlexNode, BoxNode, TextNode, AbsoluteNode, GridNode, MagazineNode, BoxRecord, LayoutOptions, } from './types.js';
+export { SpatialIndex } from './rtree.js';
+export { SelectionState, resolvePixelToCursor, normalizeSelection, getSelectedText, charOffsetToCursor, segmentIndexToCursor, segmentWidthOnLine } from './selection.js';
+export { attachMouseHandlers } from './mouse.js';
+export { InteractionBridge, cursorToCharOffset, expandToWordBoundaries } from './bridge.js';
+export type { InteractionOptions } from './bridge.js';
+export { ShadowSemanticTree, BUFFER_VIEWPORTS, MAX_SHADOW_NODES } from './shadow.js';
+export { FocusController } from './focus.js';
+export { LayoutSearch } from './search.js';
+export type { SearchOptions, SearchConstructorOptions } from './search.js';
+export { paintSelection, paintSearchHighlights, paintFocusRing, charRangeToRect } from './paint.js';
+export type { Node, FlexNode, BoxNode, TextNode, AbsoluteNode, GridNode, MagazineNode, LinkNode, HeadingNode, BoxRecord, TextLineData, SelectionCursor, SelectionRange, LayoutOptions, } from './types.js';
+export type { BBox } from './rtree.js';
+export type { TextLayoutSource } from './selection.js';
+export type { MouseHandlerOptions } from './mouse.js';
+export type { SearchMatchRect } from './paint.js';

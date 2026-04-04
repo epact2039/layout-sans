@@ -185,15 +185,22 @@ export function solveFlex(
 
     for (const item of line.items) {
       if (isNaN(item.crossSize)) {
-        if (alignItems === 'stretch') {
+        if (alignItems === 'stretch' && isFinite(crossContainerSize)) {
+          // Stretch only when the container cross size is known and finite.
+          // When containerHeight is NaN (content-sized row inside a column),
+          // stretch would propagate NaN — fall through to measurement instead.
           item.crossSize = crossContainerSize - item.marginCross
         } else {
-          // Content-sized cross axis — measure via ctx
-          const measured = ctx.measureNode(item.child, item.id, isRow ? item.mainSize : innerWidth, isRow ? innerHeight : item.mainSize)
+          // Content-sized cross axis, or container size unknown — measure via ctx.
+          const mw = isRow ? (isFinite(item.mainSize) ? item.mainSize : innerWidth) : innerWidth
+          const mh = isRow ? (isFinite(innerHeight) ? innerHeight : 0) : (isFinite(item.mainSize) ? item.mainSize : 0)
+          const measured = ctx.measureNode(item.child, item.id, mw, mh)
           item.crossSize = isRow ? measured.height : measured.width
         }
       }
-      lineCrossMax = Math.max(lineCrossMax, item.crossSize + item.marginCross)
+      // Guard NaN from bubbling into lineCrossMax.
+      const safeCross = isFinite(item.crossSize) ? item.crossSize : 0
+      lineCrossMax = Math.max(lineCrossMax, safeCross + item.marginCross)
     }
     line.crossSize = lineCrossMax
   }
@@ -236,6 +243,11 @@ export function solveFlex(
 
   let crossOffset = isRow ? padding.top : padding.left
 
+  // Track the furthest main-axis edge reached across all items and lines.
+  // Used to compute the actual column container height when no explicit height
+  // was provided (containerHeight=0 or NaN for content-sized column containers).
+  let maxMainReach = isRow ? padding.left : padding.top
+
   for (const line of lines) {
     const { start, spacing } = computeJustify(line)
     let mainOffset = (isRow ? padding.left : padding.top) + start
@@ -257,16 +269,35 @@ export function solveFlex(
       const childRecords = ctx.solveNode(item.child, item.id, x, y, w, h)
       for (let ci = 0; ci < childRecords.length; ci++) records.push(childRecords[ci]!)
 
-      mainOffset += (isNaN(item.mainSize) ? 0 : item.mainSize) + mainGap + spacing + (item.marginMain - marginMainStart)
+      // Use the actual rendered main-axis size from the child's container record
+      // instead of item.mainSize, because content-sized children (text, heading,
+      // nested flex without explicit height) have mainSize=NaN but a real rendered
+      // size returned in childRecords[0].
+      const renderedMain = childRecords.length > 0
+        ? (isRow ? childRecords[0]!.width : childRecords[0]!.height)
+        : null
+      const safeMain = (renderedMain !== null && isFinite(renderedMain))
+        ? renderedMain
+        : (isFinite(item.mainSize) ? item.mainSize : 0)
+
+      maxMainReach = Math.max(maxMainReach, mainOffset + safeMain)
+      mainOffset += safeMain + mainGap + spacing + (item.marginMain - marginMainStart)
     }
 
-    crossOffset += line.crossSize + crossGap
+    crossOffset += (isFinite(line.crossSize) ? line.crossSize : 0) + crossGap
   }
 
   // Container self record
-  const totalCross = lines.reduce((sum, l) => sum + l.crossSize, 0) + (lines.length - 1) * crossGap + (isRow ? padding.top + padding.bottom : padding.left + padding.right)
+  const totalCross = lines.reduce((sum, l) => sum + (isFinite(l.crossSize) ? l.crossSize : 0), 0)
+    + (lines.length - 1) * crossGap
+    + (isRow ? padding.top + padding.bottom : padding.left + padding.right)
   const computedWidth = isRow ? containerWidth : totalCross
-  const computedHeight = isRow ? totalCross : containerHeight
+  // For columns: derive height from the actual content extent tracked above.
+  // This handles the common case where the root column flex has no explicit height
+  // (containerHeight=0) — the computed height is the sum of all rendered children.
+  // For rows: height = totalCross (max child height + vertical padding).
+  const columnHeight = isFinite(maxMainReach) ? maxMainReach + padding.bottom : containerHeight
+  const computedHeight = isRow ? totalCross : columnHeight
 
   return { records, width: computedWidth, height: computedHeight }
 }
@@ -302,7 +333,7 @@ export function solveFlexColumn(
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!
     const id = child.id ?? `${nodeId}.${i}`
-    records[i] = { nodeId: id, x: padding.left, y, width: child.width!, height: child.height! }
+    records[i] = { nodeId: id, x: padding.left, y, width: child.width!, height: child.height!, nodeType: 'box' }
     y += child.height! + gap
   }
 
@@ -342,7 +373,7 @@ export function solveFlexRow(
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!
     const id = child.id ?? `${nodeId}.${i}`
-    records[i] = { nodeId: id, x, y: padding.top, width: child.width!, height: child.height! }
+    records[i] = { nodeId: id, x, y: padding.top, width: child.width!, height: child.height!, nodeType: 'box' }
     x += child.width! + gap
   }
 
