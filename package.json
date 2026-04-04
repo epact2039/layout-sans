@@ -51,11 +51,6 @@
   "peerDependencies": {
     "@chenglou/pretext": "*"
   },
-  "peerDependenciesMeta": {
-    "@chenglou/pretext": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@chenglou/pretext": "^0.0.3",
     "@types/node": "^25.5.0",

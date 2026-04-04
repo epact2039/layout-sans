@@ -27,8 +27,7 @@ A pure TypeScript 2D layout engine. Give it a tree of boxes with flex/grid rules
 ## Install
 
 ```sh
-npm install layout-sans
-npm install @chenglou/pretext   # peer dep for text nodes and v0.2 interaction
+npm install layout-sans @chenglou/pretext
 ```
 
 ---
