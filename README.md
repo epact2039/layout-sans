@@ -6,13 +6,18 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![bundle size](https://img.shields.io/badge/gzipped-%3C17kB-green)](https://bundlephobia.com/package/layout-sans)
 
+**v0.2** adds a full interactive text stack on top of the pure-canvas renderer: text selection, clipboard copy, Ctrl+F search, hyperlinks, and screen-reader accessibility — with zero visible DOM layout and O(viewport) DOM node count regardless of total items.
 ---
+
+<p align="center">
+  <img src="https://github.com/BaselAshraf81/layout-sans/raw/main/.github/assets/hero.gif" alt="LayoutSans Demo">
+</p>
 
 🚀 **[Live Demo](https://baselashraf81.github.io/layout-sans/demo/interactive-text.html)** — 100k-item benchmark + interactive text selection, search, and links
 
 A pure TypeScript 2D layout engine. Give it a tree of boxes with flex/grid rules; get back exact pixel positions for every box. Works in Node, Bun, Deno, Cloudflare Workers, browser — anything that runs JS.
 
-**v0.2** adds a full interactive text stack on top of the pure-canvas renderer: text selection, clipboard copy, Ctrl+F search, hyperlinks, and screen-reader accessibility — with zero visible DOM layout and O(viewport) DOM node count regardless of total items.
+
 
 ---
 
