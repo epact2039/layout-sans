@@ -36,16 +36,117 @@
     /* ── LAYOUT ──────────────────────────────────────────────────────────── */
     .shell {
       display: grid;
-      grid-template-rows: 48px 1fr 36px;
+      grid-template-rows: 44px 48px 1fr 36px;
       grid-template-columns: 260px 1fr 280px;
       height: 100vh;
       overflow: hidden;
     }
 
+    /* ── TAB SWITCHER ────────────────────────────────────────────────────── */
+    .tab-switcher {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+      background: rgba(11,11,20,0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      z-index: 50;
+    }
+
+    .tab-container {
+      display: inline-flex;
+      gap: 0;
+      padding: 4px;
+      background: linear-gradient(135deg, 
+        rgba(108,122,255,0.15) 0%, 
+        rgba(0,232,181,0.15) 50%, 
+        rgba(108,122,255,0.15) 100%);
+      border-radius: 10px;
+      position: relative;
+      box-shadow: 0 0 20px rgba(108,122,255,0.2), 
+                  0 0 40px rgba(0,232,181,0.1),
+                  inset 0 1px 1px rgba(255,255,255,0.1);
+    }
+
+    .tab-container::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 10px;
+      padding: 1.5px;
+      background: linear-gradient(135deg, 
+        #6c7aff 0%, 
+        #00e8b5 25%, 
+        #6c7aff 50%, 
+        #00e8b5 75%, 
+        #6c7aff 100%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      opacity: 0.6;
+      animation: shimmer 3s linear infinite;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+
+    .tab-btn {
+      padding: 8px 20px;
+      background: rgba(11,11,20,0.8);
+      border: none;
+      border-radius: 7px;
+      color: var(--muted);
+      font-family: var(--inter);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      text-decoration: none;
+      display: inline-block;
+      position: relative;
+      z-index: 1;
+      backdrop-filter: blur(8px);
+    }
+
+    .tab-btn:hover {
+      background: rgba(108,122,255,0.2);
+      color: var(--text);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(108,122,255,0.3);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, 
+        rgba(108,122,255,0.3) 0%, 
+        rgba(0,232,181,0.25) 100%);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(108,122,255,0.4),
+                  0 2px 8px rgba(0,232,181,0.3),
+                  inset 0 1px 1px rgba(255,255,255,0.2);
+    }
+
+    .tab-btn.active::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 7px;
+      background: linear-gradient(135deg, 
+        rgba(108,122,255,0.4) 0%, 
+        rgba(0,232,181,0.3) 100%);
+      filter: blur(8px);
+      z-index: -1;
+      opacity: 0.6;
+    }
+
     /* ── HEADER ──────────────────────────────────────────────────────────── */
     .header {
       grid-column: 1 / -1;
-      grid-row: 1;
+      grid-row: 2;
       display: flex;
       align-items: center;
       gap: 16px;
@@ -109,7 +210,7 @@
     /* ── LEFT PANEL ──────────────────────────────────────────────────────── */
     .panel-left {
       grid-column: 1;
-      grid-row: 2;
+      grid-row: 3;
       background: var(--surface);
       border-right: 1px solid var(--border);
       overflow-y: auto;
@@ -220,7 +321,7 @@
     /* ── CANVAS WRAP ─────────────────────────────────────────────────────── */
     .canvas-wrap {
       grid-column: 2;
-      grid-row: 2;
+      grid-row: 3;
       position: relative;
       overflow: hidden;
       background: #0f0f1c;
@@ -243,7 +344,7 @@
     /* ── RIGHT PANEL ─────────────────────────────────────────────────────── */
     .panel-right {
       grid-column: 3;
-      grid-row: 2;
+      grid-row: 3;
       background: var(--surface);
       border-left: 1px solid var(--border);
       overflow-y: auto;
@@ -286,7 +387,7 @@
     /* ── FOOTER ──────────────────────────────────────────────────────────── */
     .footer {
       grid-column: 1 / -1;
-      grid-row: 3;
+      grid-row: 4;
       display: flex;
       align-items: center;
       gap: 20px;
@@ -352,6 +453,14 @@
 <body>
 
 <div class="shell">
+
+  <!-- ── TAB SWITCHER ──────────────────────────────────────────────────────── -->
+  <nav class="tab-switcher">
+    <div class="tab-container">
+      <a href="hero.html" class="tab-btn">Hero Demo</a>
+      <a href="interactive-text.html" class="tab-btn active">Interactive Text</a>
+    </div>
+  </nav>
 
   <!-- ── HEADER ───────────────────────────────────────────────────────────── -->
   <header class="header">

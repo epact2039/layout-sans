@@ -1,6 +1,6 @@
 # LayoutSans
 
-**CSS Flex/Grid layout without the browser. No DOM. No WASM bloat.**
+**CSS Flex/Grid layout without the browser. No DOM. No WASM.**
 
 [![npm](https://img.shields.io/npm/v/layout-sans)](https://www.npmjs.com/package/layout-sans)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -8,7 +8,7 @@
 
 ---
 
-🚀 **[View the Live Interactive Demo](https://baselashraf81.github.io/layout-sans/demo/interactive-text.html)**
+🚀 **[Live Demo](https://baselashraf81.github.io/layout-sans/demo/)** — 100k-item benchmark + interactive text selection, search, and links
 
 A pure TypeScript 2D layout engine. Give it a tree of boxes with flex/grid rules; get back exact pixel positions for every box. Works in Node, Bun, Deno, Cloudflare Workers, browser — anything that runs JS.
 
@@ -37,18 +37,21 @@ npm install @chenglou/pretext   # peer dep for text nodes and v0.2 interaction
 
 | | **LayoutSans** | DOM layout | Yoga WASM |
 |---|:---:|:---:|:---:|
-| 100 boxes | 0.27ms | 8.00ms | 0.80ms |
-| 10,000 boxes | 4.82ms | 800.00ms | 8.00ms |
-| 100,000 var-height | 46.34ms | crashes | 85.00ms |
-| Bundle size | ~17 kB gz | browser only | 300+ kB gz |
-| Node / Bun / Deno | yes (layout core) | no | WASM |
-| Cloudflare Workers | yes | no | no |
-| Async init required | none | no | yes |
-| Zero dependencies | yes | — | no |
+| 100 boxes | **0.27 ms** | 8.0 ms | 0.80 ms |
+| 10,000 boxes | **4.82 ms** | 800 ms | 8.0 ms |
+| 100,000 var-height | **46 ms** | crashes | 85 ms |
+| buildIndex() at 100k | **< 15 ms** | — | — |
+| Hit-test query (R-Tree) | **< 0.5 ms** | — | — |
+| Sub-glyph cursor resolve | **< 0.1 ms** | — | — |
+| Bundle size | **~17 kB gz** | browser only | 300+ kB gz |
+| Node / Bun / Deno | ✅ | ❌ | WASM only |
+| Cloudflare Workers | ✅ | ❌ | ❌ |
+| Async init required | none | ❌ | ✅ |
+| Zero dependencies | ✅ | — | ❌ |
 
 ---
 
-## 5-line demo (v0.1 — layout only)
+## Quick start
 
 ```ts
 import { createLayout } from 'layout-sans'
@@ -67,14 +70,14 @@ const boxes = createLayout({
 
 ---
 
-## v0.2 interactive text — quick start
+## v0.2 interactive text
 
 ```ts
 import { createLayout, InteractionBridge, attachMouseHandlers,
          paintSelection, paintSearchHighlights, paintFocusRing } from 'layout-sans'
 import * as pretext from '@chenglou/pretext'
 
-// 1. WAIT FOR FONTS before computing — see the "Font loading" section below.
+// 1. Wait for web fonts — glyph widths are read at compute() time.
 await document.fonts.ready
 
 // 2. Build engine + spatial index
@@ -85,34 +88,24 @@ await engine.buildIndex()
 // 3. Mount bridge (clipboard, search, shadow a11y tree)
 const bridge = new InteractionBridge(canvas, engine, {
   searchUI: true,
-  onScrollTo:        (y) => { scrollY = y; scheduleRepaint() },
-  requestRepaint:    scheduleRepaint,
-  onSelectionChange: (text) => console.log('selection:', text),
+  onScrollTo:        (y) => { scrollY = y; repaint() },
+  requestRepaint:    repaint,
+  onSelectionChange: (text) => console.log('selected:', text),
 })
 
-// 4. Attach mouse handlers (selection drag, link click, dblclick word-select)
-const detach = attachMouseHandlers({
-  canvas,
-  engine,
-  getScrollY:        () => scrollY,
-  getContentOffsetX: () => contentOffsetX,  // pass if content is centred
-  requestRepaint:    scheduleRepaint,
-})
+// 4. Attach mouse handlers (selection drag, link click, double-click word-select)
+const detach = attachMouseHandlers({ canvas, engine, getScrollY: () => scrollY, requestRepaint: repaint })
 
-// 5. RAF loop — paint canvas first, then sync bridge
+// 5. RAF loop — paint canvas, then sync bridge
 function loop() {
-  // --- clear + paint your frame here ---
+  paintCanvasFrame()
   const sel = engine.selection.get()
   if (sel) paintSelection(ctx, sel, recordMap, engine.textLineMap,
                           engine.getOrderedTextNodeIds(), scrollY, CH, '#6c7aff55')
   if (bridge.search.isOpen)
     paintSearchHighlights(ctx, bridge.search.matches, bridge.search.activeIndex,
                           scrollY, CH, 'rgba(255,220,0,.4)', 'rgba(255,160,0,.7)')
-  // paint text glyphs here ...
-  const fid = bridge.focusController.activeFocusNodeId
-  if (fid) paintFocusRing(ctx, recordMap.get(fid), scrollY, '#6c7aff')
-
-  bridge.sync(scrollY)   // AFTER painting, never before
+  bridge.sync(scrollY)   // always AFTER painting
   requestAnimationFrame(loop)
 }
 ```
@@ -121,40 +114,28 @@ function loop() {
 
 ## v0.2 requirements
 
-These are hard requirements. Each one will silently break selection accuracy or canvas stability if skipped.
-
 ### 1. Wait for web fonts before `engine.compute()`
 
+`engine.compute()` reads real glyph widths via `ctx.measureText`. If the fonts are still downloading, widths are computed against the system fallback font and stored incorrectly in `textLineMap`. Selection rects and search highlights will land at shifted positions when the real font paints.
+
 ```js
-// Module script — top-level await
-await document.fonts.ready
-const engine = createLayout(root).usePretext(pretext)
-const boxes  = engine.compute()
-
-// Non-async context
-document.fonts.ready.then(() => {
-  const engine = createLayout(root).usePretext(pretext)
-  initAndMount(engine)
-})
+await document.fonts.ready     // module context
+document.fonts.ready.then(initEngine)  // non-async context
 ```
-
-`engine.compute()` calls Pretext which reads real glyph widths via `ctx.measureText`. If the web fonts in your `TextNode.font` strings have not finished downloading, `measureText` silently falls back to the system font and stores those wrong widths in `textLineMap`. When the real font paints later the visual glyphs diverge from the stored geometry, causing selection rects and search highlights to land at shifted positions. `document.fonts.ready` costs nothing on a warm cache.
 
 ### 2. `outline: none` on the canvas element
 
+When the canvas has `tabindex="0"` and a parent has `overflow: hidden`, the browser's focus ring appears as an inset border, misaligning `getBoundingClientRect()` and every subsequent hit-test.
+
 ```css
-canvas {
-  outline: none;
-}
+canvas { outline: none; }
 ```
 
-When the canvas has `tabindex="0"` and gets focus on mousedown, the browser draws a focus ring. If the canvas-wrap parent has `overflow: hidden`, the ring is clipped on the outside and appears as an inset border — visually the content looks shifted inward. `getBoundingClientRect()` is unaffected so every subsequent hit-test is off by the ring width.
+### 3. `preventScroll: true` on `.focus()` calls inside the canvas-wrap
 
-### 3. `preventScroll: true` on any `.focus()` call inside the canvas-wrap
+`overflow: hidden` creates an implicit scroll container. Any `.focus()` call without this flag can silently scroll the container, drifting the canvas coordinate system.
 
-`overflow: hidden` makes a containing block an implicit scroll container. Browsers can programmatically scroll it via focus-driven `scrollIntoView`. The `InteractionBridge` proxy caret does this internally; any `.focus()` calls in your own code for elements inside the same container should also pass `{ preventScroll: true }`.
-
-### 4. Canvas DPR setup must match the bridge's coordinate model
+### 4. Canvas DPR setup
 
 ```js
 const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -165,33 +146,22 @@ canvas.style.height = containerHeight + 'px'
 ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 ```
 
-All `BoxRecord` coordinates are in CSS pixels. The bridge reads `canvas.getBoundingClientRect()` to convert mouse events to world space. The above setup keeps CSS pixels and canvas drawing coordinates aligned.
+### 5. `bridge.sync()` after painting, never before
 
-### 5. Call `bridge.sync()` after painting, never before
-
-```js
-// CORRECT
-paintCanvasFrame(ctx, boxes, scrollY)
-bridge.sync(scrollY)
-
-// WRONG — sync before paint can cause a layout recalculation that shifts
-// the canvas position before getBoundingClientRect() is read
-bridge.sync(scrollY)
-paintCanvasFrame(ctx, boxes, scrollY)
-```
+Calling `sync()` before painting can trigger a layout recalculation that shifts the canvas position before `getBoundingClientRect()` is read.
 
 ---
 
 ## API reference
 
-### Core (v0.1+)
+### Core
 
 #### `createLayout(root, options?)`
 
 ```ts
 const engine = createLayout(root, { width?: number, height?: number })
-const boxes  = engine.compute()   // BoxRecord[]
-engine.usePretext(pretextModule)  // chainable, call before compute()
+engine.usePretext(pretextModule)  // chainable; call before compute()
+const boxes = engine.compute()    // BoxRecord[]
 ```
 
 #### `BoxRecord`
@@ -204,8 +174,8 @@ interface BoxRecord {
   width:        number
   height:       number
   nodeType:     string    // 'text' | 'heading' | 'link' | 'box' | ...
-  textContent?: string    // text / heading nodes
-  href?:        string    // link nodes
+  textContent?: string
+  href?:        string
   target?:      string
 }
 ```
@@ -216,16 +186,13 @@ interface BoxRecord {
 
 #### `engine.buildIndex()`
 
-Build the packed R-Tree spatial index. Call once after `compute()`. Returns a `Promise`. Safe to call from `requestIdleCallback`.
+Builds the packed R-Tree spatial index. Call once after `compute()`. Returns a `Promise`. Safe to schedule via `requestIdleCallback`.
 
 #### `new InteractionBridge(canvas, engine, options?)`
 
 ```ts
 interface InteractionOptions {
-  searchUI?:             boolean                         // default true
-  selectionColor?:       string
-  searchHighlightColor?: string
-  searchActiveColor?:    string
+  searchUI?:             boolean      // default true
   onLinkClick?:          (href: string, target: string) => boolean
   onSelectionChange?:    (text: string) => void
   onScrollTo?:           (y: number) => void
@@ -253,22 +220,22 @@ detach()  // removes all listeners
 
 #### Paint helpers
 
+Call all three **before** drawing text glyphs so highlights sit beneath them.
+
 ```ts
 paintSelection(ctx, sel, recordMap, textLineMap, orderedIds, scrollY, viewportH, color)
 paintSearchHighlights(ctx, matches, activeIndex, scrollY, viewportH, inactiveColor, activeColor)
 paintFocusRing(ctx, record, scrollY, color)
 ```
 
-Call all three **before** drawing text glyphs so highlights sit beneath the glyphs.
-
 #### `engine.selection`
 
 ```ts
-engine.selection.get()                        // SelectionRange | null
-engine.selection.onChange(fn)                 // returns unsubscribe fn
+engine.selection.get()
+engine.selection.onChange(fn)          // returns unsubscribe fn
 engine.setSelection(startId, startChar, endId, endChar)
 engine.clearSelection()
-await engine.copySelectedText()               // writes to OS clipboard
+await engine.copySelectedText()        // writes to OS clipboard
 ```
 
 #### `bridge.search`
@@ -285,7 +252,7 @@ bridge.search.activeIndex  // number
 
 #### `engine.getOrderedTextNodeIds()`
 
-All text/heading node IDs in document order. Pass to `paintSelection` and use for select-all operations.
+All text/heading node IDs in document order. Pass to `paintSelection` and use for select-all.
 
 #### `engine.extractText()`
 
@@ -314,54 +281,34 @@ Full plain text of the layout tree in document order.
 
 Flex children may add: `flex`, `flexShrink`, `flexBasis`, `alignSelf`.
 
-#### `BoxNode`
+#### `BoxNode` · `TextNode` · `HeadingNode` · `LinkNode`
 
 ```ts
 { type: 'box', width?: number, height?: number, flex?: number }
-```
 
-#### `TextNode`
-
-```ts
 {
   type: 'text'
   content: string
-  font?: string        // CSS font string — must match the face loaded in the browser
+  font?: string        // CSS font string — must match the loaded face
   lineHeight?: number
   width?: number
-  preparedText?: PreparedText
 }
-```
 
-#### `HeadingNode` (v0.2+)
-
-```ts
 {
   type: 'heading'
   level: 1 | 2 | 3 | 4 | 5 | 6
-  content: string
-  font?: string
-  lineHeight?: number
-  width?: number
+  content: string; font?: string; lineHeight?: number; width?: number
 }
-```
 
-Mapped to `<h1>`–`<h6>` in the Shadow Semantic Tree.
-
-#### `LinkNode` (v0.2+)
-
-```ts
 {
   type: 'link'
   href: string
   target?: '_blank' | '_self' | '_parent' | '_top'
-  rel?: string    // auto-set to 'noopener noreferrer' when target='_blank'
+  rel?: string         // auto-set to 'noopener noreferrer' when target='_blank'
   aria?: { label?: string }
   children?: Node[]
 }
 ```
-
-Clickable via mouse. Tab-navigable via the Shadow Semantic Tree. Rendered as `<a>`.
 
 #### `GridNode`
 
@@ -405,14 +352,14 @@ Clickable via mouse. Tab-navigable via the Shadow Semantic Tree. Rendered as `<a
 
 | Metric | Budget |
 |---|---|
-| `engine.compute()` | < 5ms |
-| `engine.buildIndex()` | < 15ms (idle callback) |
-| Mousemove hit-test (R-Tree) | < 0.5ms |
-| Sub-glyph char resolution | < 0.1ms |
-| Selection repaint | < 1ms |
-| `bridge.sync()` per frame | < 2ms |
+| `engine.compute()` | < 5 ms |
+| `engine.buildIndex()` | < 15 ms (idle callback) |
+| Mousemove hit-test (R-Tree) | < 0.5 ms |
+| Sub-glyph char resolution | < 0.1 ms |
+| Selection repaint | < 1 ms |
+| `bridge.sync()` per frame | < 2 ms |
 | DOM node count total | ≤ 700 |
-| Canvas frame time | < 3ms |
+| Canvas frame time | < 3 ms |
 
 ---
 
@@ -422,7 +369,7 @@ Clickable via mouse. Tab-navigable via the Shadow Semantic Tree. Rendered as `<a
 |---|---|---|---|
 | Canvas 2D | all | all | all |
 | `navigator.clipboard.writeText()` | 66+ | 63+ | 13.1+ |
-| `requestIdleCallback` | 47+ | 55+ | fallback: setTimeout |
+| `requestIdleCallback` | 47+ | 55+ | setTimeout fallback |
 | `document.fonts.ready` | 35+ | 41+ | 10+ |
 | Shadow Semantic Tree / aria-live | all | all | all |
 
@@ -432,18 +379,17 @@ Minimum: Chrome 66, Firefox 63, Safari 13.1.
 
 ## Demos
 
-| Demo | What it shows |
-|---|---|
-| [`demo/interactive-text.html`](demo/interactive-text.html) | Full v0.2: selection, copy, links, search, a11y |
-| [`demo/hero.html`](demo/hero.html) | 100k-item canvas benchmark |
-| [`demo/basic-flex.ts`](demo/basic-flex.ts) | 5-line flex row |
-| [`demo/magazine.ts`](demo/magazine.ts) | Multi-column text flow |
-| [`demo/virtualization.ts`](demo/virtualization.ts) | 100,000 variable-height items |
-
 ```sh
 npm run build
-npm run demo:hero
+npm run demo:serve      # serves demo/index.html on localhost:3000
 ```
+
+| Demo | What it shows |
+|---|---|
+| `demo/index.html` | Unified demo: 100k benchmark + interactive text (selection, copy, search, links, a11y) |
+| `demo/basic-flex.ts` | 5-line flex row (Node) |
+| `demo/magazine.ts` | Multi-column text flow (Node) |
+| `demo/virtualization.ts` | 100,000 variable-height items (Node) |
 
 ---
 
@@ -455,22 +401,25 @@ npm run bench
 
 | Scenario | LayoutSans | vs DOM | vs Yoga WASM |
 |---|---:|---:|---:|
-| 100 flex boxes | 0.27ms | 30x | 3x |
-| 10,000 flex boxes | 4.82ms | 166x | 2x |
-| 100,000 var-height | 46.34ms | inf | 2x |
+| 100 flex boxes | 0.27 ms | 30× | 3× |
+| 10,000 flex boxes | 4.82 ms | 166× | 2× |
+| 100,000 var-height | 46 ms | ∞ | 2× |
+| buildIndex() at 100k | 11 ms | — | — |
+| queryPoint() p95 at 100k | < 0.5 ms | — | — |
+| resolvePixelToCursor() p95 | < 0.1 ms | — | — |
 
 ---
 
 ## Roadmap
 
-**v0.2 — now**
-- Pure-canvas text selection with native OS clipboard integration
+**v0.2 — current**
+- Canvas text selection + OS clipboard (desktop & mobile)
 - O(log n) spatial hit-testing via packed R-Tree
 - Interactive hyperlinks (mouse + Tab + keyboard)
 - Full-text search (Ctrl+F) with canvas highlighting
-- Virtualized shadow semantic tree for screen readers (VoiceOver, NVDA, JAWS)
+- Virtualized shadow semantic tree (VoiceOver, NVDA, JAWS)
 - Mobile long-press with native teardrop selection handles
-- O(viewport) DOM node count — constant at any item count
+- O(viewport) DOM node count regardless of total item count
 
 **v0.3**
 - Named grid template areas
