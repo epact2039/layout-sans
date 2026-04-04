@@ -134,15 +134,37 @@ export function resolvePixelToCursor(
 
   // ── 3. Walk segments ──────────────────────────────────────────────────────
   let accX = 0
-  const endSi = line.end.segmentIndex
 
-  for (let si = line.start.segmentIndex; si <= endSi; si++) {
+  // LayoutLine.end is an EXCLUSIVE cursor (mirrors Pretext's buildLineTextFromRange
+  // which loops `i < endSegmentIndex`):
+  //
+  //   • end.graphemeIndex === 0:  segment end.segmentIndex belongs entirely to the
+  //     NEXT line.  The last visual segment on THIS line is end.segmentIndex − 1.
+  //
+  //   • end.graphemeIndex > 0:   segment end.segmentIndex is split across the line
+  //     boundary; graphemes [0, end.graphemeIndex) are on this line.
+  //
+  // Without this distinction, a click exactly at the rightmost pixel of a line
+  // (clampedX === line.width, which equals the sum of all real segment widths)
+  // causes every `accX + segW > clampedX` check to return false, the loop falls
+  // through to the forced `isLastSeg` exit on end.segmentIndex — a segment that
+  // lives on the next line — and the returned cursor has the wrong segmentIndex.
+  const hasPartialEndSeg = line.end.graphemeIndex > 0
+  // trueEndSi: the highest segment index that has ANY content on this line.
+  const trueEndSi = hasPartialEndSeg
+    ? line.end.segmentIndex
+    : Math.max(line.start.segmentIndex, line.end.segmentIndex - 1)
+  // endGiForLastSeg: the exclusive grapheme upper bound for trueEndSi.
+  //   • Partial-end segment → limit to the graphemes actually on this line.
+  //   • Full segment (no split) → 0 = "through the last grapheme" (full).
+  const endGiForLastSeg = hasPartialEndSeg ? line.end.graphemeIndex : 0
+
+  for (let si = line.start.segmentIndex; si <= trueEndSi; si++) {
     // Start grapheme for this segment on this line (non-zero only for the first
     // segment when a long word was broken mid-segment onto this line).
     const startGi = si === line.start.segmentIndex ? line.start.graphemeIndex : 0
-    const isLastSeg = si === endSi
-    // endGi is exclusive: 0 means "through the last grapheme of this segment".
-    const endGi = isLastSeg ? line.end.graphemeIndex : 0
+    const isLastSeg = si === trueEndSi
+    const endGi = isLastSeg ? endGiForLastSeg : 0
 
     const segW = segmentWidthOnLine(prepared, si, startGi, endGi)
 
@@ -170,8 +192,8 @@ export function resolvePixelToCursor(
   return {
     nodeId,
     lineIndex,
-    segmentIndex: endSi,
-    graphemeIndex: line.end.graphemeIndex,
+    segmentIndex: trueEndSi,
+    graphemeIndex: endGiForLastSeg,
     pixelX: line.width,
   }
 }

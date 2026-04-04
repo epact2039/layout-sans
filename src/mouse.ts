@@ -136,7 +136,10 @@ export function attachMouseHandlers(opts: MouseHandlerOptions): () => void {
 
       const localX = worldX - tld.originX
       const localY = worldY - tld.originY
-      return resolvePixelToCursor(nodeId, localX, localY, tld)
+      
+      const cursor = resolvePixelToCursor(nodeId, localX, localY, tld)
+      
+      return cursor
     }
 
     return null
@@ -445,8 +448,25 @@ function expandToWordBoundaries(
 
 /**
  * Binary search: find the index of the LayoutLine that contains segment `si`.
- * Falls back to linear scan if binary search over-shoots (shouldn't happen
- * with well-formed Pretext output, but guards against edge cases).
+ *
+ * IMPORTANT — LayoutLine.end is an EXCLUSIVE cursor (mirrors Pretext internals):
+ *   • buildLineTextFromRange loops `i < endSegmentIndex`, meaning the loop body
+ *     never touches endSegmentIndex itself.
+ *   • endSegmentIndex content is included ONLY when endGraphemeIndex > 0.
+ *   • When endGraphemeIndex === 0, segment endSegmentIndex is the FIRST segment
+ *     of the NEXT line and must NOT be counted as belonging to this line.
+ *
+ * Consequence for the binary search: when `si === line.end.segmentIndex` we
+ * must further check line.end.graphemeIndex:
+ *   - graphemeIndex > 0  → the segment is split across the line boundary;
+ *                          graphemes [0, graphemeIndex) are on this line → match.
+ *   - graphemeIndex === 0 → segment si starts the next line → search higher.
+ *
+ * Without this check, a word whose first segment begins a new line (the common
+ * case: endGraphemeIndex is almost always 0 at a clean word-break) would be
+ * attributed to the preceding line. segmentIndexToCursor would then walk
+ * segment widths from that wrong line's start, accumulating widths across a
+ * line boundary and producing wildly inflated pixelX values.
  */
 function findLineForSegment(
   lines: import('./types.js').TextLineData['lines'],
@@ -461,7 +481,13 @@ function findLineForSegment(
       hi = mid - 1
     } else if (si > line.end.segmentIndex) {
       lo = mid + 1
+    } else if (si === line.end.segmentIndex && line.end.graphemeIndex === 0) {
+      // end cursor is exclusive and graphemeIndex=0 means no content from this
+      // segment lives on this line — it is the start of the next line.
+      lo = mid + 1
     } else {
+      // si is within [start.segmentIndex, end.segmentIndex] and, if si equals
+      // end.segmentIndex, graphemeIndex > 0 so some content is on this line.
       return mid
     }
   }

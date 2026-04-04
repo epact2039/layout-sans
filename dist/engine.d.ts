@@ -92,6 +92,40 @@ export declare class LayoutEngine {
      */
     extractText(): string;
     private ctx;
+    /**
+     * Translate every BoxRecord in `source` by (dx, dy), push into `target`,
+     * and apply the SAME delta to any corresponding TextLineData in textLineMap.
+     *
+     * WHY THIS IS NECESSARY
+     * ─────────────────────
+     * Layout solvers (solveFlex, solveGrid, solveMagazine) work entirely in
+     * LOCAL coordinates (relative to the container's own origin at (0, 0)).
+     * When they call ctx.solveNode for a child text or heading node, that call
+     * reaches solveTextNode / solveHeadingNode, which immediately stores the
+     * child's LOCAL (x, y) as TextLineData.originX / originY.
+     *
+     * Back in solveNode, the engine adds the container's absolute position to
+     * every returned BoxRecord via pushAllOffset. Without also updating the
+     * TextLineData origins, the BoxRecord.x/y and TextLineData.originX/Y end up
+     * describing different coordinate systems: the record is in absolute canvas
+     * space while the TLD is still in the container's local space.
+     *
+     * Example (a text node inside a flex column that starts at y = 679):
+     *   solveTextNode called with y = 0 (local) → originY = 0
+     *   pushAllOffset translates BoxRecord to y = 679 (absolute)
+     *   paintSelection computes rectY = originY + li * lineHeight - scrollY
+     *                                  = 0 + 78 - 425 = -347  ← WAY OFF SCREEN
+     *   With this method: originY += 679 → 679
+     *                     rectY = 679 + 78 - 425 = 332  ← correct
+     *
+     * ACCUMULATED DELTAS FOR NESTED CONTAINERS
+     * ──────────────────────────────────────────
+     * This method is called once per container level on the way back up the
+     * recursion. For a text node nested three levels deep, each outer container
+     * contributes its own (dx, dy) in sequence, accumulating to the correct
+     * absolute origin — exactly mirroring how BoxRecord.x/y accumulates.
+     */
+    private pushAllOffsetSync;
     private solveNode;
     /**
      * Solve a text node, building TextLineData alongside the BoxRecord.

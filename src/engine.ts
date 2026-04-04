@@ -42,6 +42,11 @@ function pushAll<T>(target: T[], source: T[]): void {
  *
  * solveAbsolute is exempt — it already resolves child coordinates to absolute
  * canvas space internally.
+ *
+ * NOTE: This bare function does NOT update textLineMap origins. Inside
+ * LayoutEngine.solveNode, always call the instance method
+ * pushAllOffsetSync() instead, so that TextLineData.originX/Y stay
+ * consistent with the translated BoxRecords.
  */
 function pushAllOffset(target: BoxRecord[], source: BoxRecord[], dx: number, dy: number): void {
   for (let i = 0; i < source.length; i++) {
@@ -278,6 +283,61 @@ export class LayoutEngine {
     },
   }
 
+  // ── pushAllOffsetSync ────────────────────────────────────────────────────────
+
+  /**
+   * Translate every BoxRecord in `source` by (dx, dy), push into `target`,
+   * and apply the SAME delta to any corresponding TextLineData in textLineMap.
+   *
+   * WHY THIS IS NECESSARY
+   * ─────────────────────
+   * Layout solvers (solveFlex, solveGrid, solveMagazine) work entirely in
+   * LOCAL coordinates (relative to the container's own origin at (0, 0)).
+   * When they call ctx.solveNode for a child text or heading node, that call
+   * reaches solveTextNode / solveHeadingNode, which immediately stores the
+   * child's LOCAL (x, y) as TextLineData.originX / originY.
+   *
+   * Back in solveNode, the engine adds the container's absolute position to
+   * every returned BoxRecord via pushAllOffset. Without also updating the
+   * TextLineData origins, the BoxRecord.x/y and TextLineData.originX/Y end up
+   * describing different coordinate systems: the record is in absolute canvas
+   * space while the TLD is still in the container's local space.
+   *
+   * Example (a text node inside a flex column that starts at y = 679):
+   *   solveTextNode called with y = 0 (local) → originY = 0
+   *   pushAllOffset translates BoxRecord to y = 679 (absolute)
+   *   paintSelection computes rectY = originY + li * lineHeight - scrollY
+   *                                  = 0 + 78 - 425 = -347  ← WAY OFF SCREEN
+   *   With this method: originY += 679 → 679
+   *                     rectY = 679 + 78 - 425 = 332  ← correct
+   *
+   * ACCUMULATED DELTAS FOR NESTED CONTAINERS
+   * ──────────────────────────────────────────
+   * This method is called once per container level on the way back up the
+   * recursion. For a text node nested three levels deep, each outer container
+   * contributes its own (dx, dy) in sequence, accumulating to the correct
+   * absolute origin — exactly mirroring how BoxRecord.x/y accumulates.
+   */
+  private pushAllOffsetSync(
+    target: BoxRecord[],
+    source: BoxRecord[],
+    dx: number,
+    dy: number,
+  ): void {
+    for (let i = 0; i < source.length; i++) {
+      const r = source[i]!
+      target.push({ ...r, x: r.x + dx, y: r.y + dy })
+      // Sync TextLineData origin for text / heading nodes.
+      // Non-text nodes have no textLineMap entry — get() returns undefined
+      // and the conditional is a no-op, so this is safe for all node types.
+      const tld = this.textLineMap.get(r.nodeId)
+      if (tld !== undefined) {
+        tld.originX += dx
+        tld.originY += dy
+      }
+    }
+  }
+
   // ── solveNode ───────────────────────────────────────────────────────────────
 
   private solveNode(
@@ -316,21 +376,21 @@ export class LayoutEngine {
         }
         const result = solveFlex(node as FlexNode, nodeId, width, height, this.ctx)
         const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'flex' }]
-        pushAllOffset(out, result.records, x, y)
+        this.pushAllOffsetSync(out, result.records, x, y)
         return out
       }
 
       case 'grid': {
         const result = solveGrid(node as GridNode, nodeId, width, height, this.ctx)
         const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'grid' }]
-        pushAllOffset(out, result.records, x, y)
+        this.pushAllOffsetSync(out, result.records, x, y)
         return out
       }
 
       case 'magazine': {
         const result = solveMagazine(node as MagazineNode, nodeId, width, height, this.ctx, this.pretext)
         const out: BoxRecord[] = [{ nodeId: id, x, y, width: result.width, height: result.height, nodeType: 'magazine' }]
-        pushAllOffset(out, result.records, x, y)
+        this.pushAllOffsetSync(out, result.records, x, y)
         return out
       }
 
@@ -376,7 +436,7 @@ export class LayoutEngine {
           ...(ln.target  !== undefined && { target: ln.target }),
           ...(autoRel    !== undefined && { rel:    autoRel }),
         }]
-        pushAllOffset(out, result.records, x, y)
+        this.pushAllOffsetSync(out, result.records, x, y)
         return out
       }
 
