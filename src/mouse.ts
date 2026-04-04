@@ -408,7 +408,12 @@ function expandToWordBoundaries(
   // ── Walk backward to find the word start segment ─────────────────────────
 
   let startSi = cursor.segmentIndex
-  // If the cursor lands directly on a boundary segment, expand past it.
+  // First check if current segment is a boundary, if so move to previous word
+  const currentKind = kinds[startSi]
+  if (currentKind === 'space' || currentKind === 'zero-width-break' || currentKind === 'hard-break') {
+    startSi--
+  }
+  // Walk backward until we hit a boundary
   while (startSi > 0) {
     const k = kinds[startSi - 1]
     if (k === 'space' || k === 'zero-width-break' || k === 'hard-break') break

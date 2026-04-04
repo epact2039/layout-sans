@@ -229,6 +229,13 @@
     #demo {
       display: block;
       cursor: text;
+      /* outline:none is required — without it, mousedown focuses the canvas
+         and the browser draws a focus ring. Since .canvas-wrap has
+         overflow:hidden, the ring is clipped on the outside and appears as
+         an inset border. The canvas content looks shifted/shrunken but
+         getBoundingClientRect() is unchanged, causing selection rects to
+         appear at incorrect positions (off by the ring width). */
+      outline: none;
     }
 
     /* Search panel injected by LayoutSearch is absolute inside canvas-wrap */
@@ -1357,9 +1364,39 @@ const ro = new ResizeObserver(() => {
 ro.observe(wrap)
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+//
+// CRITICAL: gate initEngine() on document.fonts.ready.
+//
+// engine.compute() calls Pretext which reads real glyph metrics via
+// ctx.measureText. On a hard reload with empty cache, Inter and JetBrains
+// Mono have not finished downloading yet, so measureText falls back to the
+// system font and stores WRONG segment widths in textLineMap.
+//
+// When the web fonts later paint (typically 200-800ms on a cold cache), the
+// canvas repaints with correct glyphs but the stored metrics stay frozen at
+// the fallback font values. Visual glyphs no longer match the selection
+// geometry, making the canvas appear to jump and selection rects land at
+// wrong positions.
+//
+// document.fonts.ready resolves once all CSS-referenced fonts have loaded
+// (or permanently failed). Deferring initEngine() until then guarantees
+// Pretext always measures with the correct font metrics. On a soft reload
+// the fonts are already in memory so this resolves on the next microtask
+// with no visible delay.
 
-initEngine()
-scheduleRepaint()
+// Show a transient placeholder while fonts are in-flight (cold cache only).
+resizeCanvas()
+ctx.fillStyle = '#0f0f1c'
+ctx.fillRect(0, 0, CW, CH)
+ctx.font = '13px system-ui, sans-serif'
+ctx.fillStyle = 'rgba(255,255,255,0.2)'
+ctx.textBaseline = 'middle'
+ctx.fillText('Loading fonts…', 20, CH / 2)
+
+document.fonts.ready.then(() => {
+  initEngine()
+  scheduleRepaint()
+})
 
 // Update DOM count periodically
 setInterval(() => {

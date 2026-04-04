@@ -415,7 +415,12 @@ export class InteractionBridge {
         this.writeToClipboard(text)
 
         // Return focus to canvas so keyboard shortcuts keep working.
-        this.canvas.focus()
+        // preventScroll: true is required — canvas-wrap has overflow:hidden,
+        // making it an implicit scroll container. Without this flag, some
+        // browsers internally scroll it to "bring the canvas into view",
+        // visually offsetting all rendered content from the mouse coordinate
+        // system and breaking selection hit-testing.
+        this.canvas.focus({ preventScroll: true })
       }
     }
 
