@@ -8,7 +8,7 @@
 
 ---
 
-🚀 **[Live Demo](https://baselashraf81.github.io/layout-sans/demo/)** — 100k-item benchmark + interactive text selection, search, and links
+🚀 **[Live Demo](https://baselashraf81.github.io/layout-sans/demo/interactive-text.html)** — 100k-item benchmark + interactive text selection, search, and links
 
 A pure TypeScript 2D layout engine. Give it a tree of boxes with flex/grid rules; get back exact pixel positions for every box. Works in Node, Bun, Deno, Cloudflare Workers, browser — anything that runs JS.
 
