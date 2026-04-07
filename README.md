@@ -381,21 +381,6 @@ Minimum: Chrome 66, Firefox 63, Safari 13.1.
 
 ---
 
-## Demos
-
-```sh
-npm run build
-npm run demo:serve      # serves demo/index.html on localhost:3000
-```
-
-| Demo | What it shows |
-|---|---|
-| `demo/index.html` | Unified demo: 100k benchmark + interactive text (selection, copy, search, links, a11y) |
-| `demo/basic-flex.ts` | 5-line flex row (Node) |
-| `demo/magazine.ts` | Multi-column text flow (Node) |
-| `demo/virtualization.ts` | 100,000 variable-height items (Node) |
-
----
 
 ## Benchmarks
 
